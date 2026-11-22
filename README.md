@@ -1,4 +1,4 @@
-# memory-curation
+# harness-memory
 
 A file-based memory format for Claude Code sessions and agents, and a nightly curator that keeps it small and navigable.
 
@@ -30,7 +30,7 @@ tests/                         synthetic fixtures and tests
 ## Install
 
 1. Clone the repository and copy `config.example.json` to `config.json`. Set `workspace` (the folder whose sub-folders get memory roots) and, if you like, the other paths. If you set `roots`, list every group you want curated — the map replaces the default instead of merging with it (`archive_days` merges per group).
-2. Make the skill visible to Claude Code — link `skills/curate-memory` to `~/.claude/skills/curate-memory` (`mklink /J` or a symlink); the scripts follow the link back to the repository and find `config.json`. If you copy the folder instead, set a user environment variable so the scripts (and the scheduled task) find the config: `setx MEMORY_CURATION_CONFIG C:\path\to\memory-curation\config.json`.
+2. Make the skill visible to Claude Code — link `skills/curate-memory` to `~/.claude/skills/curate-memory` (`mklink /J` or a symlink); the scripts follow the link back to the repository and find `config.json`. If you copy the folder instead, set a user environment variable so the scripts (and the scheduled task) find the config: `setx MEMORY_CURATION_CONFIG C:\path\to\harness-memory\config.json`.
 3. Register the hook and one setting in `~/.claude/settings.json`:
 
    ```json
@@ -39,7 +39,7 @@ tests/                         synthetic fixtures and tests
      "hooks": {
        "SessionStart": [
          { "matcher": "*", "hooks": [ { "type": "command",
-           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\memory-curation\\hooks\\ensure-memory-dir.ps1\"" } ] }
+           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\ensure-memory-dir.ps1\"" } ] }
        ]
      }
    }
