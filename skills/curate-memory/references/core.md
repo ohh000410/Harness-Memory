@@ -2,7 +2,7 @@
 
 ## Layers
 
-- `MEMORY.md` (L0): sparse router. Sections in order: `## Hot` (current/unresolved, ≤5 links), pointer lines to common memory, `## Topic indexes` (one line per `indexes/*.md`), `## Recent / pending curate` (new notes not yet routed). Each line = link + hook ≤80 chars. Never link to `raw/`. Keep under ~800 estimated tokens and 25 links.
+- `MEMORY.md` (L0): sparse router. Sections in order: pointer line to the parent folder's memory (sub-folder roots), `## Hot` (current/unresolved, ≤5 links), `## Topic indexes` (one line per `indexes/*.md`), `## Leaves` (small roots only), `## Recent / pending curate` (new notes not yet routed). Each line = link + hook ≤80 chars. Never link to `raw/`. Keep under ~800 estimated tokens (ASCII ≈ 4 characters per token, other scripts ≈ 1 per character) and 25 links.
 - `indexes/<topic>.md` (L1): one topic per file, one line per note (`- [title](../distilled/<file>.md) — hook`). A note belongs to exactly one primary index; add a second link only for a genuinely different retrieval intent. Create a new index only when ≥3 notes share a topic that no existing index covers; otherwise use the closest existing index.
 - `distilled/*.md` (L2): the only place facts live. Frontmatter `name` (kebab-slug = filename) · `description` · `type` · `created`.
 - `raw/` (L3): provenance and pre-change copies. Never a retrieval source.
@@ -18,4 +18,4 @@ If `name` is missing or empty, set it from the filename (kebab-case of the whole
 
 ## Encoding
 
-Write UTF-8 without BOM, LF line endings, text in any language as-is.
+New files: UTF-8 without BOM, LF line endings. Existing files keep their BOM and line endings. Text in any language is kept as-is.

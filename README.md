@@ -63,7 +63,7 @@ flowchart LR
 
 - **코드:** 바뀐 메모리만 처리, 흩어진 메모를 제자리로, 없는 메모를 가리키는 줄 삭제, 머리말 채우기, 끊긴 링크 정리, 취소선 문장을 날짜 붙은 `superseded:` 표시로, 8 KB 넘는 메모를 원문 그대로 나눔(이어 붙이면 원본과 같은지 확인), log.md 회전, 바꾸기 전 사본을 `raw/legacy/` 에 백업, 쓴 뒤 다시 점검
 - **LLM(`claude -p`, 도구 없음):** 새 메모를 넣을 목차, 메모가 15개가 되면 주제 목차 3~7개로 묶기, 목차가 25줄을 넘으면 주제별로 쪼개기, 서로 모순되는 메모 쌍, 길어진 목록 줄 줄이기
-- **보관:** 60일(에이전트 메모리는 180일) 넘게 안 바뀐 진행 기록(`type: project`)은 `archive/` 로. 규칙·참고·사용자 정보는 오래돼도 남김. 지우는 것은 없음
+- **보관:** 60일(에이전트 메모리는 180일) 넘게 안 바뀐 진행 기록(`type: project`)은 `archive/` 로. 규칙·참고·사용자 정보는 오래돼도 남김. 메모를 지우지 않음 — 바꾸거나 합친 원본은 `raw/legacy/` 에 남김
 - **보고:** 실행마다 보고서(찾은 것·한 것·못 한 것·검증·LLM 비용)
 
 <br>
@@ -71,7 +71,7 @@ flowchart LR
 ## 설치
 
 1. 이 저장소를 받고 `config.example.json` 을 `config.json` 으로 복사해 `workspace`(하위 폴더마다 메모리를 둘 작업 폴더)를 적습니다. `roots` 를 적으면 기본값과 합쳐지지 않으니 정리할 위치를 모두 적습니다.
-2. 스킬을 Claude Code 에 연결합니다 — `skills/curate-memory` 를 `~/.claude/skills/curate-memory` 로 링크(`mklink /J`). 링크하면 스크립트가 저장소의 `config.json` 을 찾습니다. 복사했다면 `setx MEMORY_CURATION_CONFIG C:\path\to\harness-memory\config.json`.
+2. 스킬을 Claude Code 에 연결합니다 — `skills/curate-memory` 를 `~/.claude/skills/curate-memory` 로 링크(PowerShell 에서는 `cmd /c mklink /J <링크> <원본>`, 상위 `skills` 폴더가 없으면 먼저 만듦). 링크하면 스크립트가 저장소의 `config.json` 을 찾습니다. 복사했다면 `setx MEMORY_CURATION_CONFIG C:\path\to\harness-memory\config.json`.
 3. `~/.claude/settings.json` 에 훅과 설정 하나를 넣습니다.
 
    ```json
@@ -97,7 +97,7 @@ flowchart LR
 ## 쓰는 방식
 
 ```
-python -X utf8 skills/curate-memory/scripts/curate.py --dry-run          # 바꿀 것만 보고(파일·LLM 안 씀)
+python -X utf8 skills/curate-memory/scripts/curate.py --dry-run          # 바꿀 것만 보고(메모리·LLM 안 건드림, 보고서만 씀)
 python -X utf8 skills/curate-memory/scripts/curate.py --only <메모리>     # 하나만 지금
 python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메모리>
 ```
@@ -119,6 +119,7 @@ python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메�
 ## 한계
 
 - LLM 은 메모리 하나씩만 봅니다 — 메모리 사이의 중복은 못 찾습니다
+- 폴더 이름에 `__` 를 쓰지 마세요 — 메모리 이름이 경로 구분을 `__` 로 바꿔 만들어져 `a` 와 `a__b` 가 같은 이름이 됩니다
 - 작성자의 Windows 11 PC 한 대에서 확인했습니다
 
 <br>

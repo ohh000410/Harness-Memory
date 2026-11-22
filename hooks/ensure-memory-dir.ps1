@@ -53,19 +53,24 @@ while ($dir.Length -ge $ws.Length -and -not $parentL0) {
     $dir = Split-Path $dir -Parent
 }
 
-$today = Get-Date -Format 'yyyy-MM-dd'
-$l0 = "# Memory Index: $($rel.Replace('\', '/'))`n`nLast curated: $today (created by ensure-memory-dir hook).`n`n"
-if ($parentL0) { $l0 += "Shared memory (ways of working, tools, preferences): ``$parentL0```n`n" }
-$l0 += "## Hot`n- None.`n`n## Topic indexes`n- None.`n`n## Recent / pending curate`n- None.`n"
-[System.IO.File]::WriteAllText((Join-Path $memdir 'MEMORY.md'), $l0, $utf8)
-[System.IO.File]::WriteAllText((Join-Path $memdir 'log.md'), "- [$today] created | memory dir by ensure-memory-dir hook`n", $utf8)
+# A root that already exists (its folder setting was lost, or the folder was restored) is only reconnected, never rewritten
+$existing = Test-Path -LiteralPath (Join-Path $memdir 'MEMORY.md')
+if (-not $existing) {
+    $today = Get-Date -Format 'yyyy-MM-dd'
+    $l0 = "# Memory Index: $($rel.Replace('\', '/'))`n`nLast curated: $today (created by ensure-memory-dir hook).`n`n"
+    if ($parentL0) { $l0 += "Shared memory (ways of working, tools, preferences): ``$parentL0```n`n" }
+    $l0 += "## Hot`n- None.`n`n## Topic indexes`n- None.`n`n## Recent / pending curate`n- None.`n"
+    [System.IO.File]::WriteAllText((Join-Path $memdir 'MEMORY.md'), $l0, $utf8)
+    [System.IO.File]::WriteAllText((Join-Path $memdir 'log.md'), "- [$today] created | memory dir by ensure-memory-dir hook`n", $utf8)
+}
 
 New-Item -ItemType Directory -Force $settingsDir | Out-Null
 $s = if (Test-Path -LiteralPath $settingsPath) { ConvertFrom-Json ([System.IO.File]::ReadAllText($settingsPath, $utf8)) } else { [pscustomobject]@{} }
 $s | Add-Member -NotePropertyName autoMemoryDirectory -NotePropertyValue $memdir -Force
 [System.IO.File]::WriteAllText($settingsPath, (($s | ConvertTo-Json -Depth 10) + "`n"), $utf8)
 
+$what = if ($existing) { "Reconnected this folder to its existing memory root" } else { "Created this folder's memory root" }
 $out = @{ hookSpecificOutput = @{ hookEventName = 'SessionStart'
-    additionalContext = "Created this folder's memory root: $memdir`nSave this session's memories there (later sessions pick it up automatically)." } }
+    additionalContext = "${what}: $memdir`nSave this session's memories there (later sessions pick it up automatically)." } }
 [Console]::OutputEncoding = $utf8
 [Console]::Out.Write(($out | ConvertTo-Json -Depth 5 -Compress))

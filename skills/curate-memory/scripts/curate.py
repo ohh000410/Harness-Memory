@@ -94,7 +94,7 @@ LOG_ROTATE = 64 * 1024
 HOOK = 80
 CTX_CHARS = 150_000          # max characters sent to the LLM at once (beyond this, candidate leaves get descriptions only)
 TYPES = ("user", "feedback", "project", "reference")
-STRUCK = re.compile(r"~~(?:(?!~~).){1,2000}?~~", re.S)
+STRUCK = re.compile(r"~~(?:(?!~~)[^\n]){1,2000}?~~")   # within one line — detection and the line-by-line fix must see the same spans
 FENCE = re.compile(r"^\s*(```|~~~)")
 WIKI =re.compile(r"\[\[([^\]|#]+)\]\]")
 MDLINK = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
@@ -239,11 +239,12 @@ def audit(root, live, previous):
         for k in keys(p.stem):
             raw_names[k] = root.rel(p)
     a = {"unrouted": [], "big": [], "nofm": [], "dead": [], "struck": [], "pending": 0}
+    routed = linked_names(routing)
     for f in leaves:
         t = Doc(f).text
         if STRUCK.search(mask_code(t)):
             a["struck"].append(f.name)
-        if f.name not in routing and f.stem not in routing:
+        if f.name not in routed:
             a["unrouted"].append(f.name)
         if f.stat().st_size > LIMIT:
             a["big"].append(f.name)
@@ -265,7 +266,7 @@ def audit(root, live, previous):
     a["loose"] = [p.name for p in root.path.glob("*.md") if p.name not in ("MEMORY.md", "log.md")]
     a["dead_lines"] = dead_index_lines(root)
     # same L0 limits for every group
-    a["l0_over"] = len(mtext) / 4 > L0_TOKENS or len(MDLINK.findall(mtext)) > L0_LINKS
+    a["l0_over"] = est_tokens(mtext) > L0_TOKENS or len(MDLINK.findall(mtext)) > L0_LINKS
     log = root.path / "log.md"
     a["log_big"] = log.exists() and log.stat().st_size > LOG_ROTATE
     hot = section_lines(mtext, "Hot")
@@ -285,6 +286,21 @@ def audit(root, live, previous):
     a["deleted"] = sorted(r for r in previous if r not in cur)
     a["fingerprints"] = cur
     return a
+
+
+def linked_names(text):
+    """File names that markdown links in the text point to (exact targets, not substrings: api.md is not api-v2.md)"""
+    out = set()
+    for _, target in MDLINK.findall(text):
+        name = target.split("#")[0].rstrip("/").split("/")[-1]
+        out.add(name if name.endswith(".md") else name + ".md")
+    return out
+
+
+def est_tokens(text):
+    """Token estimate: about 4 characters per token for ASCII, about one per character for other scripts (Hangul, CJK)"""
+    ascii_chars = sum(1 for c in text if ord(c) < 128)
+    return ascii_chars / 4 + (len(text) - ascii_chars)
 
 
 def index_leaves(text):
@@ -553,7 +569,9 @@ def apply_routing(root, a, decision, to_route):
                 mem.text = re.sub(r"(?m)^## Recent / pending curate", "## Leaves\n\n## Recent / pending curate", mem.text) \
                     if "## Recent / pending curate" in mem.text else mem.text.rstrip("\n") + "\n\n## Leaves\n"
             backup(root, "MEMORY.md", "routing")
-            mem.text = re.sub(r"(?m)^## Leaves\n", f"## Leaves\n{line}\n", mem.text, count=1)
+            if f"distilled/{leaf})" not in "\n".join(section_lines(mem.text, "Leaves")):   # a note re-listed under Recent is already here
+                # the line is inserted as text: a function replacement keeps backslashes (C:\Users\...) out of re's template syntax
+                mem.text = re.sub(r"(?m)^## Leaves\n", lambda m: f"## Leaves\n{line}\n", mem.text, count=1)
         elif idx in existing or (idx.startswith("NEW:") and new_counts.get(idx, 0) >= 3 and not small):
             fname = idx if idx in existing else kebab(idx[4:]) + ".md"
             rel = f"indexes/{fname}"
@@ -566,13 +584,14 @@ def apply_routing(root, a, decision, to_route):
                 made[fname] = []
                 backup(root, "MEMORY.md", "routing")
                 if "## Topic indexes" in mem.text:
-                    mem.text = re.sub(r"(?m)^## Topic indexes\n", f"## Topic indexes\n{topic}\n", mem.text, count=1)
+                    mem.text = re.sub(r"(?m)^## Topic indexes\n", lambda m: f"## Topic indexes\n{topic}\n", mem.text, count=1)
                 else:
                     mem.text = mem.text.rstrip("\n") + f"\n\n## Topic indexes\n{topic}\n"
                 root.created.append(rel)
             d = root.doc(rel)
-            backup(root, rel, "routing")
-            d.text = d.text.rstrip("\n") + f"\n- [{title}](../distilled/{leaf}) — {hook}\n"
+            if f"../distilled/{leaf})" not in d.text:   # a note re-listed under Recent may already be in this index
+                backup(root, rel, "routing")
+                d.text = d.text.rstrip("\n") + f"\n- [{title}](../distilled/{leaf}) — {hook}\n"
             if fname in made:
                 made[fname].append(title)
         else:
@@ -653,10 +672,10 @@ def apply_hook_updates(root, decision, delta_leaves):
 def apply_l0_hooks(root, decision):
     mem = root.doc("MEMORY.md")
     for h in decision.get("l0_hooks", []):
-        target, hook = h.get("target"), (h.get("hook") or "")[:HOOK]
+        target, hook = h.get("target"), (h.get("hook") or "").strip().replace("\n", " ")[:HOOK]
         if not target or not hook:
             continue
-        new = re.sub(r"(?m)^(\s*-\s*\[[^\]]*\]\(%s\))\s*—.*$" % re.escape(target), r"\1 — " + hook.replace("\\", "\\\\"), mem.text)
+        new = re.sub(r"(?m)^(\s*-\s*\[[^\]]*\]\(%s\))\s*—.*$" % re.escape(target), lambda m: f"{m.group(1)} — {hook}", mem.text)
         if new != mem.text:
             backup(root, "MEMORY.md", "routing")
             mem.text = new
@@ -667,7 +686,12 @@ def apply_l0_hooks(root, decision):
 # ---------- splitting ----------
 def in_block(lines, i):
     """Whether cutting before line i lands inside a table or code block"""
-    fence = sum(1 for l in lines[:i] if l.strip().startswith("```")) % 2 == 1
+    open_fence = None   # ``` or ~~~ block still open before line i
+    for l in lines[:i]:
+        m = FENCE.match(l)
+        if m and (open_fence is None or m.group(1) == open_fence):
+            open_fence = None if open_fence else m.group(1)
+    fence = open_fence is not None
     table = i > 0 and lines[i - 1].lstrip().startswith("|") and lines[i].lstrip().startswith("|")
     return fence or table
 
@@ -703,6 +727,7 @@ def shrink(root, name, model, use_llm):
         try:
             starts = sorted({int(s) - 1 for s in call_llm(root, model, split_prompt(name, lines), "high").get("starts", [])})
         except Exception as e:
+            root.llm_failed = True
             root.issues.append(f"shrink: {name} LLM failed — {e}")
             return
         how = "LLM"
@@ -723,18 +748,23 @@ def shrink(root, name, model, use_llm):
         parts.append((f"{stem}-{n}.md", f"{slug}-{n}", c, n))
         n += 1
     total = len(chunks)
+    # build and check every part (and the shortened original) before queuing any write: all parts or none
+    texts = []
     for pname, pslug, c, num in parts:
         fm_lines = head.strip("\n").split("\n")[1:-1] if head else []
         fm_lines = [l for l in fm_lines if not re.match(r"(name|description):", l)]
         desc = (fm.get("description", "").strip('"') + f" ({num})").replace('"', "'")
-        text = "---\nname: " + pslug + f'\ndescription: "{desc}"\n' + "\n".join(fm_lines) + "\n---\n" + c.rstrip("\n") + f"\n\n[[{slug}]] (refines)\n"
-        if len(text.encode("utf-8")) > LIMIT:
-            root.issues.append(f"shrink: {name} a part is still over {LIMIT} bytes — skipped")
-            return
+        texts.append((pname, "---\nname: " + pslug + f'\ndescription: "{desc}"\n' + "\n".join(fm_lines) + "\n---\n"
+                      + c.rstrip("\n") + f"\n\n[[{slug}]] (refines)\n"))
+    first = head + chunks[0].rstrip("\n") + "\n\n" + "\n".join(f"[[{p[1]}]] (related)" for p in parts) + "\n"
+    if any(len(t.encode("utf-8")) > LIMIT for t in [first] + [t for _, t in texts]):
+        root.issues.append(f"shrink: {name} a part is still over {LIMIT} bytes — skipped")
+        return
+    for pname, text in texts:
         root.new_files.append((root.path / "distilled" / pname, text))
         root.created.append(f"distilled/{pname}")
     backup(root, rel, "shrink")
-    d.text = head + chunks[0].rstrip("\n") + "\n\n" + "\n".join(f"[[{p[1]}]] (related)" for p in parts) + "\n"
+    d.text = first
     # part lines go right after the index line of the original
     for p in [root.path / "MEMORY.md", *root.index_files()]:
         if not p.exists():
@@ -793,6 +823,7 @@ def split_index(root, iname, model):
     try:
         groups = call_llm(root, model, prompt).get("groups", [])
     except Exception as e:
+        root.llm_failed = True
         root.issues.append(f"split-index: {iname} LLM failed — {e}")
         return
     assigned = [x for g in groups for x in g.get("leaves", [])]
@@ -846,7 +877,7 @@ def place_split_lines(text, iname, new_lines):
         out.append(l)
     text = "\n".join(out)
     if first is None:
-        text = re.sub(r"(?m)^## Topic indexes\n(- None\.\n)?", "## Topic indexes\n" + "\n".join(new_lines) + "\n", text, count=1) \
+        text = re.sub(r"(?m)^## Topic indexes\n(- None\.\n)?", lambda m: "## Topic indexes\n" + "\n".join(new_lines) + "\n", text, count=1) \
             if "## Topic indexes" in text else text.rstrip("\n") + "\n\n## Topic indexes\n" + "\n".join(new_lines) + "\n"
     return text
 
@@ -862,6 +893,9 @@ def write_all(root, dry):
     for src, dst in root.moves:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(src, dst)
+        for d in root.writes.values():   # an edit made this run to a moved note (e.g. frontmatter) is written at its new place
+            if Path(d.path) == Path(src):
+                d.path = Path(dst)
     for p, text in root.new_files:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(text.encode("utf-8"))
@@ -923,10 +957,11 @@ def run_root(root, a, args, model):
             if a["l0_over"]:
                 apply_l0_hooks(root, dec)
         except Exception as e:
+            root.llm_failed = True
             root.issues.append(f"structural LLM: {e}")
     elif to_route:
         root.issues.append(f"route: {len(to_route)} leaves skipped (run without LLM)")
-    for name in [n for n in a["big"]][:3]:
+    for name in [n for n in a["big"] if n not in a["stale"]][:3]:   # a note going to archive/ is not split
         shrink(root, name, CFG.model_heavy, use_llm)
     # one big index per night
     if a["big_idx"]:
@@ -948,6 +983,8 @@ def verify(root, before, live, dry):
     for k in ("unrouted", "nofm", "dead", "struck", "dead_lines", "loose"):
         if after[k]:
             problems.append(f"remaining {k}: {after[k][:3]}")
+    if getattr(root, "llm_failed", False):   # decisions that were due were not made — keep the checkpoint so they are asked again
+        problems.append("an LLM call failed")
     return problems
 
 

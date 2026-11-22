@@ -100,7 +100,7 @@ def check(root, g, texts):
     file = str(g.get("file", ""))
     if not (re.fullmatch(r"(reference|feedback)_(?:[^\W_]|-)+\.md", file) and file == file.lower()):
         why.append(f"file name not in the expected form: {g.get('file')}")
-    elif (root.path / "distilled" / g["file"]).exists():
+    elif (root.path / "distilled" / g["file"]).exists() or (root.path / "archive" / g["file"]).exists():
         why.append(f"file already exists: {g['file']}")
     if g.get("type") not in TYPES:
         why.append(f"not a type: {g.get('type')}")
@@ -140,22 +140,27 @@ def new_leaf_text(g):
 def propose(root, model, index):
     leaves = scope(root, index)
     texts = {f.name: Doc(f).text for f in leaves}
+    hashes = {f.name: sha(f) for f in leaves}   # taken together with the text the LLM sees — apply checks against this state
     size = sum(len(t) for t in texts.values())
     if size > CTX_CHARS:
         sizes = [(p.stem, sum(len(texts.get(f.name, "")) for f in scope(root, p.name))) for p in root.index_files()]
         sys.exit(f"TOO_BIG {size:,} chars > {CTX_CHARS:,} — use --index, one index at a time: "
                  + ", ".join(f"{n} {s:,} chars" for n, s in sizes))
     dec = call_llm(root, model, prompt(root, leaves), "high")
-    groups = []
+    groups, names = [], set()
     for g in dec.get("groups", [])[:MAX_GROUPS]:
         ok, why, moved = check(root, g, texts)
         if ok and len(new_leaf_text(g).encode("utf-8")) > LIMIT:
             ok, why = False, [f"new leaf over {LIMIT} bytes"]
+        if ok and g["file"] in names:   # two groups may not write the same new file
+            ok, why = False, [f"same file name as an earlier group: {g['file']}"]
+        if ok:
+            names.add(g["file"])
         groups.append(dict(g, ok=ok, why=why, moved=moved))
     out = root.path / "raw" / "consolidate"
     out.mkdir(parents=True, exist_ok=True)
     plan = {"root": str(root.path), "stamp": STAMP, "model": model, "cost": sum(x["cost"] for x in root.llm),
-            "sha": {t["leaf"]: sha(root.path / "distilled" / t["leaf"]) for g in groups for t in g.get("take", []) if t.get("leaf") in texts},
+            "sha": {t["leaf"]: hashes[t["leaf"]] for g in groups if g["ok"] for t in g.get("take", []) if t.get("leaf") in texts},
             "groups": groups}
     pj = out / f"plan-{STAMP}.json"
     pj.write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -185,6 +190,9 @@ def apply(plan_path):
     groups = [g for g in plan["groups"] if g["ok"]]
     if not groups:
         sys.exit("NOTHING no accepted groups")
+    for g in groups:   # the new file's place must still be free — nothing is ever overwritten
+        if (root.path / "distilled" / g["file"]).exists() or (root.path / "archive" / g["file"]).exists():
+            sys.exit(f"STALE {g['file']} exists now — run propose again")
     legacy = root.path / "raw" / "legacy" / f"consolidate-{STAMP}"
     touched = {t["leaf"] for g in groups for t in g["take"]}
     for rel in [f"distilled/{l}" for l in sorted(touched)] + ["MEMORY.md", "log.md"]:
@@ -207,7 +215,7 @@ def apply(plan_path):
         sec = "## Leaves" if small and "## Leaves" in mem.text else "## Recent / pending curate"
         if sec not in mem.text:
             mem.text = mem.text.rstrip("\n") + f"\n\n{sec}\n"
-        mem.text = re.sub(r"(?m)^%s\n" % re.escape(sec), f"{sec}\n{line}\n", mem.text, count=1)
+        mem.text = re.sub(r"(?m)^%s\n" % re.escape(sec), lambda m: f"{sec}\n{line}\n", mem.text, count=1)
         if log is not None:
             log.text = log.text.rstrip("\n") + f"\n- [{TODAY}] consolidated | {slug} ← {', '.join(t['leaf'] for t in g['take'])}\n"
     retired = {}   # source whose content all moved → slug of the new leaf (merged)
@@ -242,6 +250,9 @@ def apply(plan_path):
             log.text = log.text.rstrip("\n") + "".join(f"\n- [{TODAY}] merged | {l} → {s} (all content moved, original in legacy)" for l, s in retired.items()) + "\n"
     for rel, d in root.writes.items():
         if d.changed() and Path(rel).name not in retired:
+            if not (legacy / rel).exists():   # every file changed here gets a pre-change copy (indexes and other notes too)
+                (legacy / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(d.path, legacy / rel)
             d.path.write_bytes(d.data())
     for leaf in retired:
         (root.path / "distilled" / leaf).unlink()   # the original is in legacy/consolidate-<time>/distilled
