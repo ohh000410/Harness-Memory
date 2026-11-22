@@ -1,0 +1,13 @@
+{
+  "workspace": "~/workspace",
+  "exclude": [],
+  "roots": {
+    "main": "~/.claude/projects/memories",
+    "agent": "~/.agents/agent-memory"
+  },
+  "logs": "~/.claude/logs/curate-memory",
+  "claude": "claude",
+  "model": "sonnet",
+  "model_heavy": "opus",
+  "archive_days": { "main": 60, "agent": 180 }
+}
