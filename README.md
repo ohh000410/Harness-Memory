@@ -11,7 +11,7 @@
 
 </div>
 
-> 💡 AI 에이전트에게 설치를 맡기려면: "github.com/ohh000410/harness-memory 의 AGENTS.md 를 읽고 설치해줘"
+> 💡 AI 에이전트에게 설치를 맡기려면: "github.com/ohh000410/Harness-Memory 의 AGENTS.md 를 읽고 설치해줘"
 
 <br>
 
@@ -118,11 +118,7 @@ python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메�
 
 ## 한계
 
-- LLM 은 메모리 하나씩만 봅니다. 서로 다른 메모리 사이의 중복은 못 찾습니다
-- 재구성의 사실 대조는 숫자·날짜·영문 이름 위주입니다. 한글 등 다른 글자의 고유명사는 미리보기에서 사용자가 확인합니다
-- 보관된 메모는 목차에 없습니다 — `archive/` 를 텍스트 검색으로 찾습니다
-- 훅이 폴더의 `settings.local.json` 을 Windows PowerShell 의 JSON 들여쓰기로 다시 씁니다(내용은 그대로)
-- `consolidate.py apply` 는 자동 시험이 아직 없습니다
+- LLM 은 메모리 하나씩만 봅니다 — 메모리 사이의 중복은 못 찾습니다
 - 작성자의 Windows 11 PC 한 대에서 확인했습니다
 
 <br>
