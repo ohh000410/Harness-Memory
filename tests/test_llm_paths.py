@@ -180,6 +180,18 @@ class Consolidate(Base):
         self.assertTrue((legacy / "indexes/work.md").exists())   # project_b retired → index edited → backed up
 
 
+    def test_apply_keeps_the_age_of_edited_notes(self):
+        old = time.time() - 70 * 86400
+        for n in ("project_a.md", "project_b.md"):
+            os.utime(self.root / "distilled" / n, (old, old))
+        plan = self.propose([self.group("reference_vendor-x.md", [{"leaf": "project_a.md", "lines": [7]}], "Vendor X phone 010-0000-0001.")])
+        self.assertTrue(plan["groups"][0]["ok"], plan["groups"][0]["why"])
+        pj = next((self.root / "raw/consolidate").glob("plan-*.json"))
+        r = subprocess.run([sys.executable, "-X", "utf8", str(SCRIPTS / "consolidate.py"), "apply", str(pj)], capture_output=True, text=True)
+        self.assertIn("APPLIED", r.stdout, r.stderr)
+        self.assertIn("reference-vendor-x", (self.root / "distilled/project_a.md").read_text(encoding="utf-8"))   # edited
+        self.assertAlmostEqual((self.root / "distilled/project_a.md").stat().st_mtime, old, delta=2)   # but still 70 days old
+
 class SecondReview(Base):
     def test_session_write_during_run_is_never_overwritten(self):
         root = self.t / "r"

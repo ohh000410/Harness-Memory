@@ -20,9 +20,11 @@ apply: stop if a source leaf changed after the proposal → originals to raw/leg
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -259,7 +261,10 @@ def apply(plan_path):
             if not (legacy / rel).exists():   # every file changed here gets a pre-change copy (indexes and other notes too)
                 (legacy / rel).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(d.path, legacy / rel)
+            age = d.path.stat().st_mtime if rel.startswith("distilled/") else None
             d.path.write_bytes(d.data())
+            if age is not None:   # moving lines out or re-pointing links is not new work on the note — keep its age for archiving
+                os.utime(d.path, (time.time(), age))
     for leaf in retired:
         (root.path / "distilled" / leaf).unlink()   # the original is in legacy/consolidate-<time>/distilled
     print(f"APPLIED {len(groups)} groups, {len(drop)} source leaves ({len(retired)} merged into legacy), originals in {legacy}")
