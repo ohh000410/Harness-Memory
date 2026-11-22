@@ -262,7 +262,7 @@ def audit(root, live, previous):
                 a["pending"] += 1
     mem = root.path / "MEMORY.md"
     mtext = Doc(mem).text if mem.exists() else ""
-    a["recent"] = [Path(t).name for t in recent_links(mtext) if "distilled/" in t]
+    a["recent"] = [Path(t.split("#")[0]).name for t in recent_links(mtext) if "distilled/" in t]   # a #section anchor is not part of the file name
     a["loose"] = [p.name for p in root.path.glob("*.md") if p.name not in ("MEMORY.md", "log.md")]
     a["dead_lines"] = dead_index_lines(root)
     # same L0 limits for every group
@@ -295,6 +295,12 @@ def linked_names(text):
         name = target.split("#")[0].rstrip("/").split("/")[-1]
         out.add(name if name.endswith(".md") else name + ".md")
     return out
+
+
+def link_title(line, fallback):
+    """Text of the first [title](...) on an index line — the line need not start with '- ['"""
+    m = re.search(r"\[([^\]]*)\]\(", line)
+    return m.group(1) if m else Path(fallback).stem
 
 
 def est_tokens(text):
@@ -423,7 +429,8 @@ def fix_struck(root, a):
             if not STRUCK.search(plain):
                 out.append(line)
                 continue
-            line = STRUCK.sub("", line)
+            # remove struck spans outside `inline code` only — code on the same line stays as written
+            line = "".join(part if part.startswith("`") else STRUCK.sub("", part) for part in re.split(r"(`[^`\n]*`)", line))
             line = re.sub(r"^(\s*(?:[-*]\s+)?(?:[^:\n]{0,40}:\s*)?)\s*(?:→|->|—|–)\s*", r"\1", line)   # arrow left where the struck text was
             line = re.sub(r"\s{2,}", " ", line).rstrip()
             m = re.search(r"\((\d{4}-\d{2}-\d{2})\s*superseded:([^)]*)\)", line)
@@ -786,6 +793,10 @@ def shrink(root, name, model, use_llm):
 
 def archive_stale(root, a):
     """Move long-unchanged project notes to archive/ and drop their lines from MEMORY.md and indexes (notes are kept, found by search)"""
+    taken = [n for n in a["stale"] if (root.path / "archive" / n).exists()]
+    for n in taken:   # an archived note of the same name is never overwritten — this one stays active until renamed
+        root.issues.append(f"archive: {n} not moved — archive/{n} already exists (rename one of them)")
+    a["stale"] = [n for n in a["stale"] if n not in taken]
     if not a["stale"]:
         return
     for p in [root.path / "MEMORY.md", *root.index_files()]:
@@ -849,7 +860,7 @@ def split_index(root, iname, model):
         body = "\n".join(lines[x] for x in lines if x in g["leaves"])   # original order, original lines
         root.new_files.append((root.path / f"indexes/{name}.md", f"# Index: {name}\n\n{body}\n"))
         root.created.append(f"indexes/{name}.md")
-        titles = ", ".join(re.match(r"\s*- \[([^\]]*)\]", lines[x]).group(1) for x in lines if x in g["leaves"])
+        titles = ", ".join(link_title(lines[x], x) for x in lines if x in g["leaves"])
         new_lines.append(f"- [{name}](indexes/{name}.md) — " + (titles if len(titles) <= HOOK else titles[:HOOK - 1] + "…"))
     # the old index goes to raw/legacy (with this run's changes), and the new index lines replace its line in MEMORY.md
     root.new_files.append((root.path / f"raw/legacy/split-index-{STAMP}/{rel}", d.text))
@@ -884,8 +895,19 @@ def place_split_lines(text, iname, new_lines):
 
 # ---------- run ----------
 def write_all(root, dry):
-    """Backups → moves → new files → changed files. Writes nothing when dry"""
+    """Backups → moves → new files → changed files. Writes nothing when dry.
+    First checks that nothing it is about to change was changed on disk since this run read it — a live session may have saved
+    a note while the run waited for the LLM. On any such change the whole root is left untouched and retried next run."""
     if dry:
+        return
+    conflicts = [rel for rel, d in root.writes.items()
+                 if rel not in root.created and d.changed() and d.path.exists() and Doc(d.path).text != d.orig]
+    conflicts += [root.rel(src) for src, _ in root.moves if not Path(src).exists()]
+    conflicts += [root.rel(dst) for _, dst in root.moves if Path(dst).exists()]
+    conflicts += [root.rel(p) for p, _ in root.new_files if Path(p).exists()]
+    if conflicts:
+        root.write_conflict = True
+        root.issues.append(f"write: files changed during the run, nothing written (retried next run): {conflicts[:3]}")
         return
     for src, dst in root.pending_backup:
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -900,10 +922,13 @@ def write_all(root, dry):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(text.encode("utf-8"))
     for rel, d in root.writes.items():
-        if d.changed() and d.orig != "":
-            d.path.write_bytes(d.data())
-        elif d.orig == "" and rel in root.created:
-            pass  # already written as a new file — content is written again below
+        if rel in root.created or not d.changed():   # files created this run are written below (an existing empty file is not "created")
+            continue
+        note = Path(d.path).parent.name in ("distilled", "archive")
+        mtime = Path(d.path).stat().st_mtime if note else None
+        d.path.write_bytes(d.data())
+        if note:   # housekeeping edits do not make a note "recent" — its age (archive rule) stays the author's last change
+            os.utime(d.path, (time.time(), mtime))
     for rel in root.created:
         d = root.writes.get(rel)
         if d is not None and d.orig == "":
@@ -985,6 +1010,8 @@ def verify(root, before, live, dry):
             problems.append(f"remaining {k}: {after[k][:3]}")
     if getattr(root, "llm_failed", False):   # decisions that were due were not made — keep the checkpoint so they are asked again
         problems.append("an LLM call failed")
+    if getattr(root, "write_conflict", False):
+        problems.append("files changed during the run — nothing written")
     return problems
 
 

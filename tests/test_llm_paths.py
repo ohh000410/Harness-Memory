@@ -180,6 +180,98 @@ class Consolidate(Base):
         self.assertTrue((legacy / "indexes/work.md").exists())   # project_b retired → index edited → backed up
 
 
+class SecondReview(Base):
+    def test_session_write_during_run_is_never_overwritten(self):
+        root = self.t / "r"
+        write(root / "distilled/reference_new.md", note("reference-new", "New", "Body."))
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n\n## Recent / pending curate\n- [n](distilled/reference_new.md) — n\n")
+        decision = {"route": [{"leaf": "reference_new.md", "index": "LEAVES", "title": "n", "hook": "n"}],
+                    "contradictions": [], "hook_updates": [], "l0_hooks": []}
+
+        def session_saves_meanwhile(r, model, prompt, effort="medium"):
+            with open(root / "MEMORY.md", "a", encoding="utf-8") as f:   # a live session saves while the LLM is thinking
+                f.write("- [s](distilled/reference_session.md) — saved by a session\n")
+            return decision
+        curate.call_llm = session_saves_meanwhile
+        r, problems = self.run_curate(root)
+        self.assertIn("saved by a session", (root / "MEMORY.md").read_text(encoding="utf-8"))
+        self.assertTrue(any("changed during the run" in p for p in problems))
+
+    def test_archive_never_overwrites_an_archived_note(self):
+        root = self.t / "r"
+        p = root / "distilled/project_x.md"
+        write(p, note("project-x", "X now", "new text", "project"))
+        old = time.time() - 400 * 86400
+        os.utime(p, (old, old))
+        write(root / "archive/project_x.md", note("project-x", "X before", "archived text", "project"))
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n- [x](distilled/project_x.md) — x\n")
+        r, problems = self.run_curate(root)
+        self.assertIn("archived text", (root / "archive/project_x.md").read_text(encoding="utf-8"))
+        self.assertTrue(p.exists())
+        self.assertTrue(any("already exists" in i for i in r.issues))
+
+    def test_empty_existing_note_gets_its_fix_written(self):
+        root = self.t / "r"
+        write(root / "distilled/reference_empty.md", "")
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n- [e](distilled/reference_empty.md) — e\n")
+        r, problems = self.run_curate(root)
+        self.assertIn("name: reference-empty", (root / "distilled/reference_empty.md").read_text(encoding="utf-8"))
+
+    def test_housekeeping_keeps_the_note_age(self):
+        root = self.t / "r"
+        p = root / "distilled/reference_old.md"
+        write(p, "---\nname: reference-old\ntype: reference\n---\n\nOld rule.\n")   # no description → fixed by code
+        old = time.time() - 30 * 86400
+        os.utime(p, (old, old))
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n- [o](distilled/reference_old.md) — o\n")
+        self.run_curate(root)
+        self.assertIn("description:", p.read_text(encoding="utf-8"))
+        self.assertAlmostEqual(p.stat().st_mtime, old, delta=2)
+
+    def test_anchor_in_recent_link(self):
+        root = self.t / "r"
+        write(root / "distilled/reference_a.md", note("reference-a", "A", "## Sec\n\nBody."))
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n\n## Recent / pending curate\n- [a](distilled/reference_a.md#sec) — a\n")
+        self.stub({"route": [{"leaf": "reference_a.md", "index": "LEAVES", "title": "A", "hook": "a"}],
+                   "contradictions": [], "hook_updates": [], "l0_hooks": []})
+        r, problems = self.run_curate(root)
+        self.assertIn("(distilled/reference_a.md)", (root / "MEMORY.md").read_text(encoding="utf-8").split("## Recent")[0])
+
+    def test_inline_code_survives_struck_fix(self):
+        root = self.t / "r"
+        p = root / "distilled/reference_c.md"
+        write(p, note("reference-c", "C", "Run `a~~b~~c` and ~~old~~ new."))
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n- [c](distilled/reference_c.md) — c\n")
+        self.run_curate(root)
+        t = p.read_text(encoding="utf-8")
+        self.assertIn("`a~~b~~c`", t)
+        self.assertNotIn("~~old~~", t)
+
+    def test_index_line_not_starting_with_a_link(self):
+        root = self.t / "r"
+        for i in range(27):
+            write(root / f"distilled/reference_i{i}.md", note(f"reference-i{i}", f"i{i}", f"item {i}"))
+        write(root / "indexes/all.md", "# Index: all\n\n" + "\n".join(f"- item: [i{i}](../distilled/reference_i{i}.md) — i{i}" for i in range(27)) + "\n")
+        write(root / "MEMORY.md", "# M\n\n## Topic indexes\n- [all](indexes/all.md) — all\n\n## Recent / pending curate\n")
+        names = [f"reference_i{i}.md" for i in range(27)]
+        self.stub({"groups": [{"name": "first", "leaves": names[:14]}, {"name": "second", "leaves": names[14:]}],
+                   "route": [], "contradictions": [], "hook_updates": [], "l0_hooks": []})
+        r, problems = self.run_curate(root)
+        self.assertTrue((root / "indexes/first.md").exists())
+        self.assertEqual(problems, [])
+
+    def test_negation_flip_is_rejected(self):
+        root = self.t / "c"
+        write(root / "distilled/project_ops.md", note("project-ops", "Ops", "Do not disable backups.", "project"))
+        write(root / "MEMORY.md", "# M\n\n## Leaves\n- [o](distilled/project_ops.md) — o\n")
+        write(root / "log.md", "")
+        self.stub({"groups": [{"file": "reference_backups.md", "type": "reference", "title": "Backups", "description": "Backups",
+                               "body": "Disable backups.", "take": [{"leaf": "project_ops.md", "lines": [7]}], "conflicts": []}]})
+        consolidate.propose(curate.Root("main", root), "opus", None)
+        plan = json.loads(next((root / "raw/consolidate").glob("plan-*.json")).read_text(encoding="utf-8"))
+        self.assertFalse(plan["groups"][0]["ok"])
+
+
 @unittest.skipUnless(sys.platform == "win32", "PowerShell hook")
 class Hook(unittest.TestCase):
     def test_existing_root_is_reconnected_not_rewritten(self):

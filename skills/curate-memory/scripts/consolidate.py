@@ -50,9 +50,15 @@ def content_lines(text):
     return [l for l in text[end:].split("\n") if l.strip() and not re.fullmatch(r"\s*#+.*|\s*(Shared content: )?\[\[.*\]\].*", l)]
 
 
+# Negation is a fact too: "Do not disable backups" rewritten as "Disable backups" keeps every number and name.
+# Only its presence is compared (one token), so "don't" vs "do not" is not a difference
+NEG = re.compile(r"(?i)\b(?:not|no|never|none|nothing|cannot|without|\w+n't|forbid\w*|prohibit\w*)\b|금지|않|못|없|말 것|마라|말라")
+
+
 def facts(text):
     # [[link]] names are not facts — leaf names containing digits would count as facts
-    return {f.replace(",", "") for f in FACT.findall(ENUM.sub(" ", WIKI.sub(" ", text)))} - CAPS_WORDS
+    text = ENUM.sub(" ", WIKI.sub(" ", text))
+    return ({f.replace(",", "") for f in FACT.findall(text)} - CAPS_WORDS) | ({"<negation>"} if NEG.search(text) else set())
 
 
 def sha(p):
