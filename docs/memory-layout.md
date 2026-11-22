@@ -23,7 +23,9 @@ A sparse router, not a store. Sections in this order:
 | `## Hot` | current or unresolved items, at most 5 links |
 | `## Topic indexes` | one line per `indexes/*.md` |
 | `## Leaves` | only in small roots (under 15 notes, no `indexes/`): note links directly, instead of indexes |
-| `## Recent / pending curate` | notes saved since the last curation; the nightly run moves them into indexes |
+| `## Recent / pending curate` | notes saved since the last curation; the nightly run moves them into indexes. Always the last section, so a line appended at the end of the file is pending |
+
+Lines above the first `##` heading are pending too. That is where Claude Code's built-in memory format puts its one link per note, so a root written in that format (by agents that know only it) is converted on its first curation: note files move to `distilled/`, each link line moves to `## Leaves` or an index.
 
 Each line is `- [title](path) — hook` with a hook of at most 80 characters. Facts, numbers and rules stay in the notes. Never link to `raw/`. Keep the file under about 800 estimated tokens and 25 links.
 
@@ -84,4 +86,4 @@ A session reads its own root and its ancestors' roots, not siblings or children.
 
 ## Root naming
 
-Main roots live in one central folder (default `~/.claude/projects/memories/`), named after the working folder relative to a workspace root, path separators replaced by `__`: `projects/webapp/frontend` → `workspace__projects__webapp__frontend`. `hooks/ensure-memory-dir.ps1` creates the root and points the folder's `.claude/settings.local.json` `autoMemoryDirectory` at it. The workspace folder itself gets no root — put shared memory in a first-level folder, or set `autoMemoryDirectory` by hand. Do not use `__` in folder names: `a` and `a__b` would map to the same root. If a folder's setting is lost while its root still exists, the hook reconnects the folder to that root without rewriting it. A folder whose settings already name an `autoMemoryDirectory` (for example a sub-folder you point at its parent's root on purpose) is left alone.
+Main roots live in one central folder (default `~/.claude/projects/memories/`), named after the working folder relative to a workspace root, path separators replaced by `__`: `projects/webapp/frontend` → `workspace__projects__webapp__frontend`. `hooks/ensure-memory-dir.ps1` creates the root and points the folder's `.claude/settings.local.json` `autoMemoryDirectory` at it. The workspace folder itself gets no root — put shared memory in a first-level folder, or set `autoMemoryDirectory` by hand. Do not use `__` in folder names: `a\b` and `a__b` would map to the same root. If a folder's setting is lost while its root still exists, the hook reconnects the folder to that root without rewriting it. A folder whose settings already name an `autoMemoryDirectory` (for example a sub-folder you point at its parent's root on purpose) is left alone.

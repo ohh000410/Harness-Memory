@@ -3,7 +3,7 @@
 usage: python -X utf8 curate.py [--only ROOT | --path DIR] [--config FILE] [--dry-run [--llm-dry]] [--no-llm] [--full] [--model MODEL]
 
 - Targets: every root folder under the configured groups (default: main ~/.claude/projects/memories/<root>,
-  agent ~/.agents/agent-memory/<root>). A root containing `.curate-ignore` is skipped.
+  agent ~/.claude/agent-memory/<root>, Claude Code's own agent memory folder). A root containing `.curate-ignore` is skipped.
 - Only roots with work: files changed since the last run (checkpoint) or roots with audit findings.
 - Code: loose leaves at the root → distilled/, index lines pointing to missing leaves removed, frontmatter name and
   description filled, [[links]] to removed leaves unwrapped, struck text deleted in superseded form, log.md rotated past
@@ -31,7 +31,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULTS = {
-    "roots": {"main": "~/.claude/projects/memories", "agent": "~/.agents/agent-memory"},
+    "roots": {"main": "~/.claude/projects/memories", "agent": "~/.claude/agent-memory"},
     "logs": "~/.claude/logs/curate-memory",
     "claude": "claude",
     "model": "sonnet",
@@ -226,9 +226,12 @@ def fingerprints(root):
     return out
 
 
-def recent_links(text):
+def pending_links(text):
+    """Link targets waiting to be routed: lines under ## Recent / pending curate, and lines above the first ## heading —
+    Claude Code's built-in memory format (one '- [title](file.md)' line per note, no sections) puts them there"""
+    head = re.split(r"(?m)^##\s", text, maxsplit=1)[0]
     m = re.search(r"(?ms)^##\s+Recent / pending curate\s*$(.*?)(?=^##\s|\Z)", text)
-    return [t for _, t in MDLINK.findall(m.group(1))] if m else []
+    return [t for _, t in MDLINK.findall(head + (m.group(1) if m else ""))]
 
 
 def audit(root, live, previous):
@@ -262,7 +265,7 @@ def audit(root, live, previous):
                 a["pending"] += 1
     mem = root.path / "MEMORY.md"
     mtext = Doc(mem).text if mem.exists() else ""
-    a["recent"] = [Path(t.split("#")[0]).name for t in recent_links(mtext) if "distilled/" in t]   # a #section anchor is not part of the file name
+    a["recent"] = [Path(t.split("#")[0]).name for t in pending_links(mtext) if "distilled/" in t]   # a #section anchor is not part of the file name
     a["loose"] = [p.name for p in root.path.glob("*.md") if p.name not in ("MEMORY.md", "log.md")]
     a["dead_lines"] = dead_index_lines(root)
     # same L0 limits for every group
@@ -572,10 +575,8 @@ def apply_routing(root, a, decision, to_route):
         hook = (r.get("hook") or "").strip().replace("\n", " ")[:HOOK]
         if idx == "LEAVES" and small:
             line = f"- [{title}](distilled/{leaf}) — {hook}"
-            if "## Leaves" not in mem.text:
-                mem.text = re.sub(r"(?m)^## Recent / pending curate", "## Leaves\n\n## Recent / pending curate", mem.text) \
-                    if "## Recent / pending curate" in mem.text else mem.text.rstrip("\n") + "\n\n## Leaves\n"
             backup(root, "MEMORY.md", "routing")
+            mem.text = ensure_section(mem.text, "Leaves")
             if f"distilled/{leaf})" not in "\n".join(section_lines(mem.text, "Leaves")):   # a note re-listed under Recent is already here
                 # the line is inserted as text: a function replacement keeps backslashes (C:\Users\...) out of re's template syntax
                 mem.text = re.sub(r"(?m)^## Leaves\n", lambda m: f"## Leaves\n{line}\n", mem.text, count=1)
@@ -590,10 +591,8 @@ def apply_routing(root, a, decision, to_route):
                 topic = f"- [{kebab(idx[4:])}](indexes/{fname}) — {hook}"
                 made[fname] = []
                 backup(root, "MEMORY.md", "routing")
-                if "## Topic indexes" in mem.text:
-                    mem.text = re.sub(r"(?m)^## Topic indexes\n", lambda m: f"## Topic indexes\n{topic}\n", mem.text, count=1)
-                else:
-                    mem.text = mem.text.rstrip("\n") + f"\n\n## Topic indexes\n{topic}\n"
+                mem.text = ensure_section(mem.text, "Topic indexes")
+                mem.text = re.sub(r"(?m)^## Topic indexes\n", lambda m: f"## Topic indexes\n{topic}\n", mem.text, count=1)
                 root.created.append(rel)
             d = root.doc(rel)
             if f"../distilled/{leaf})" not in d.text:   # a note re-listed under Recent may already be in this index
@@ -604,11 +603,11 @@ def apply_routing(root, a, decision, to_route):
         else:
             root.issues.append(f"route: {leaf} → '{idx}' not usable (no such index, or the new-index condition is not met)")
             continue
-        # Drop from Recent. On the night a root moves to indexes, also drop its line under ## Leaves (the leaf is now in an index).
-        # Only within that section — a plain text match would also remove the same line under ## Hot
-        sections = ["Recent / pending curate"] + (["Leaves"] if a.get("regroup") else [])
+        # Drop its pending line (Recent, or above the first heading). On the night a root moves to indexes, also drop its line
+        # under ## Leaves (the leaf is now in an index). Only within those sections — the same line may also sit under ## Hot
+        sections = [None, "Recent / pending curate"] + (["Leaves"] if a.get("regroup") else [])
         for sec in sections:
-            new = drop_in_section(mem.text, sec, f"distilled/{leaf})")
+            new = drop_in_section(mem.text, sec, leaf)
             if new != mem.text:
                 backup(root, "MEMORY.md", "routing")
                 mem.text = new
@@ -625,13 +624,29 @@ def apply_routing(root, a, decision, to_route):
         mem.text = re.sub(r"(?ms)(^## Topic indexes\n(?:- .*\n)*?)- None\.\n", r"\1", mem.text)
 
 
-def drop_in_section(text, heading, target):
-    """Remove only the '- ' lines pointing to target inside the ## heading section (other sections untouched)"""
-    m = re.search(r"(?ms)^##\s+%s\s*$(.*?)(?=^##\s|\Z)" % re.escape(heading), text)
-    if not m:
+def drop_in_section(text, heading, leaf):
+    """Remove only the '- ' lines linking to leaf (exact file name, with or without #anchor) inside the ## heading section,
+    or above the first ## heading when heading is None (other sections untouched)"""
+    if heading is None:
+        h = re.search(r"(?m)^##\s", text)
+        start, end = 0, h.start() if h else len(text)
+    else:
+        m = re.search(r"(?ms)^##\s+%s\s*$(.*?)(?=^##\s|\Z)" % re.escape(heading), text)
+        if not m:
+            return text
+        start, end = m.start(1), m.end(1)
+    body = "\n".join(l for l in text[start:end].split("\n") if not (l.lstrip().startswith("- ") and leaf in linked_names(l)))
+    return text[:start] + body + text[end:]
+
+
+def ensure_section(text, heading):
+    """Add an empty ## heading just above ## Recent / pending curate (adding that at the end if missing). Recent stays the
+    last section, so a line appended at the end of MEMORY.md — as agents writing the built-in format do — is always pending"""
+    if re.search(r"(?m)^##\s+%s\s*$" % re.escape(heading), text):
         return text
-    body = "\n".join(l for l in m.group(1).split("\n") if not (l.lstrip().startswith("- ") and target in l))
-    return text[:m.start(1)] + body + text[m.end(1):]
+    if not re.search(r"(?m)^##\s+Recent / pending curate\s*$", text):
+        text = text.rstrip("\n") + "\n\n## Recent / pending curate\n"
+    return re.sub(r"(?m)^##\s+Recent / pending curate\s*$", lambda m: f"## {heading}\n\n" + m.group(0), text, count=1)
 
 
 def section_lines(text, heading):
@@ -888,8 +903,8 @@ def place_split_lines(text, iname, new_lines):
         out.append(l)
     text = "\n".join(out)
     if first is None:
-        text = re.sub(r"(?m)^## Topic indexes\n(- None\.\n)?", lambda m: "## Topic indexes\n" + "\n".join(new_lines) + "\n", text, count=1) \
-            if "## Topic indexes" in text else text.rstrip("\n") + "\n\n## Topic indexes\n" + "\n".join(new_lines) + "\n"
+        text = re.sub(r"(?m)^## Topic indexes\n(- None\.\n)?", lambda m: "## Topic indexes\n" + "\n".join(new_lines) + "\n",
+                      ensure_section(text, "Topic indexes"), count=1)
     return text
 
 

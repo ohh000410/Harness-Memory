@@ -3,7 +3,7 @@
   "exclude": [],
   "roots": {
     "main": "~/.claude/projects/memories",
-    "agent": "~/.agents/agent-memory"
+    "agent": "~/.claude/agent-memory"
   },
   "logs": "~/.claude/logs/curate-memory",
   "claude": "claude",

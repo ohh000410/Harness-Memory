@@ -90,7 +90,17 @@ flowchart LR
 4. [templates/memory-rules.md](templates/memory-rules.md) 를 `CLAUDE.md` 등 세션 지침에 붙여 넣습니다.
 5. 매일 정리를 등록합니다: `powershell -ExecutionPolicy Bypass -File scripts\register-nightly.ps1` (`-At 04:30`, `-Python <경로>`, `-Remove`). 로그온한 동안 내 계정으로 돌고, 실행 때 콘솔 창이 뜹니다. `python`·`claude` 가 작업 스케줄러의 PATH 에서 보여야 합니다.
 
-에이전트 메모리(`roots.agent`, 에이전트마다 폴더 하나)는 선택입니다. 같은 형식의 폴더를 두고 에이전트가 직접 기록하게 하면, 정리는 보관 기간만 다르게 똑같이 합니다. 없으면 설정에서 `agent` 를 지웁니다.
+에이전트 메모리(`roots.agent`, 기본값은 Claude Code 의 에이전트 메모리 폴더 `~/.claude/agent-memory`)는 선택입니다. 정리는 세션 메모리와 같고 보관 기간만 180일입니다. 서브에이전트를 쓰지 않으면 설정에서 `agent` 를 지웁니다.
+
+<br>
+
+## Subagents 와 같이 쓰기
+
+같은 작성자의 [Subagents](https://github.com/ohh000410/Subagents)(Inventor·Origin·SPEOS 등 Windows 앱을 다루는 서브에이전트)는 쓰면서 배운 것을 `~/.claude/agent-memory/<플러그인>-<에이전트>/` 에 기록합니다. Claude Code 기본 형식(메모 파일 하나 + `MEMORY.md` 끝에 링크 한 줄)이라 그대로 두면 한 줄씩 쌓이기만 합니다. 이 저장소를 설치하고 `roots.agent` 를 기본값 그대로 두면 그 폴더들도 매일 밤 정리됩니다.
+
+- 첫 정리: 메모 파일을 `distilled/` 로 옮기고, 링크 줄을 `## Leaves`(메모 15개부터는 주제 목차)로 옮기고, 맨 끝에 `## Recent / pending curate` 칸을 둡니다
+- 그 뒤: 에이전트가 `MEMORY.md` 끝에 덧붙인 줄은 Recent 칸에 들어가 다음 날 밤 제자리로 갑니다
+- 에이전트 쪽 설정은 없습니다 — Subagents 의 메모리 규칙이 "파일 하나 + 끝에 한 줄, 칸·목차는 고치지 않음"이라 정리와 겹치지 않습니다
 
 <br>
 
@@ -119,7 +129,7 @@ python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메�
 ## 한계
 
 - LLM 은 메모리 하나씩만 봅니다 — 메모리 사이의 중복은 못 찾습니다
-- 폴더 이름에 `__` 를 쓰지 마세요 — 메모리 이름이 경로 구분을 `__` 로 바꿔 만들어져 `a` 와 `a__b` 가 같은 이름이 됩니다
+- 폴더 이름에 `__` 를 쓰지 마세요 — 메모리 이름이 경로 구분을 `__` 로 바꿔 만들어져 `a\b` 와 `a__b` 가 같은 이름이 됩니다
 - 작성자의 Windows 11 PC 한 대에서 확인했습니다
 
 <br>

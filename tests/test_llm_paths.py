@@ -235,7 +235,9 @@ class SecondReview(Base):
         self.stub({"route": [{"leaf": "reference_a.md", "index": "LEAVES", "title": "A", "hook": "a"}],
                    "contradictions": [], "hook_updates": [], "l0_hooks": []})
         r, problems = self.run_curate(root)
-        self.assertIn("(distilled/reference_a.md)", (root / "MEMORY.md").read_text(encoding="utf-8").split("## Recent")[0])
+        text = (root / "MEMORY.md").read_text(encoding="utf-8")
+        self.assertIn("(distilled/reference_a.md)", text.split("## Recent")[0])
+        self.assertNotIn("reference_a.md", text.split("## Recent")[1])   # the anchored pending line is dropped once routed
 
     def test_inline_code_survives_struck_fix(self):
         root = self.t / "r"
@@ -273,6 +275,40 @@ class SecondReview(Base):
 
 
 @unittest.skipUnless(sys.platform == "win32", "PowerShell hook")
+class BuiltInFormat(Base):
+    """A memory in Claude Code's built-in format — note files at the top and one '- [title](file.md)' line each, no sections —
+    as written by agents that know only that format (for example the Subagents plugins)"""
+    def route_all(self, names):
+        self.stub({"route": [{"leaf": n, "index": "LEAVES", "title": n[:-3], "hook": n[:-3]} for n in names],
+                   "contradictions": [], "hook_updates": [], "l0_hooks": []})
+
+    def test_each_note_listed_once_and_new_lines_stay_pending(self):
+        root = self.t / "inventor"
+        write(root / "env_paths.md", note("env-paths", "Install path", "C:\\Apps\\Tool"))
+        write(root / "fillet_error.md", note("fillet-error", "Fillet error", "[RESOLVED] recompute first."))
+        write(root / "MEMORY.md", "- [Install path](env_paths.md) — install path\n- [Fillet error](fillet_error.md) — fix\n")
+        self.route_all(["env_paths.md", "fillet_error.md"])
+        self.run_curate(root)
+        text = (root / "MEMORY.md").read_text(encoding="utf-8")
+        for n in ("env_paths.md", "fillet_error.md"):
+            self.assertEqual(text.count(f"distilled/{n}"), 1, text)
+        self.assertTrue(text.rstrip().endswith("## Recent / pending curate"), text)   # Recent is the last section
+
+        # next day the agent adds a note the same way: file at the top, link line appended at the end
+        write(root / "timing.md", note("timing", "Run times", "Export takes 40 s."))
+        write(root / "MEMORY.md", text.rstrip("\n") + "\n- [Run times](timing.md) — export timing\n")
+        self.route_all(["timing.md"])
+        r, problems = self.run_curate(root)
+        text = (root / "MEMORY.md").read_text(encoding="utf-8")
+        self.assertEqual(text.count("distilled/timing.md"), 1, text)
+        self.assertIn("distilled/timing.md", text.split("## Leaves")[1].split("## Recent")[0])
+        self.assertEqual(problems, [])
+
+    def test_new_topic_index_goes_above_recent(self):
+        text = curate.ensure_section("# M\n\n## Leaves\n- [a](distilled/a.md) — a\n", "Topic indexes")
+        self.assertEqual([l for l in text.split("\n") if l.startswith("## ")], ["## Leaves", "## Topic indexes", "## Recent / pending curate"])
+
+
 class Hook(unittest.TestCase):
     def test_existing_root_is_reconnected_not_rewritten(self):
         with tempfile.TemporaryDirectory() as tmp:

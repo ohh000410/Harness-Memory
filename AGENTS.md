@@ -2,7 +2,7 @@
 
 You are installing harness-memory for the user on Windows. Ask before every step that changes their settings, and show what you will change.
 
-1. Ask the user for the **workspace** folder (sub-folders of it get memory roots) and whether they use per-agent memory. Clone this repository to a stable place (not a temp folder).
+1. Ask the user for the **workspace** folder (sub-folders of it get memory roots) and whether they use per-agent memory (Claude Code subagents with `memory: user`, such as the ohh000410/Subagents plugins, write it under `~/.claude/agent-memory/`). Clone this repository to a stable place (not a temp folder).
 2. Copy `config.example.json` to `config.json`. Set `workspace`. Set `roots` to exactly the groups they want (a `roots` map replaces the defaults; drop `agent` if unused).
 3. Link the skill (from PowerShell, `cmd /c mklink /J`; create `%USERPROFILE%\.claude\skills` first if missing): `mklink /J "%USERPROFILE%\.claude\skills\curate-memory" "<repo>\skills\curate-memory"`. If a `curate-memory` skill already exists there, stop and ask.
 4. Merge into `%USERPROFILE%\.claude\settings.json` (keep every existing key and hook): `env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR = "1"` and one `SessionStart` hook running `powershell -NoProfile -ExecutionPolicy Bypass -File "<repo>\hooks\ensure-memory-dir.ps1"`. Back up the file first.

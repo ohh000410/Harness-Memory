@@ -2,7 +2,7 @@
 
 ## Layers
 
-- `MEMORY.md` (L0): sparse router. Sections in order: pointer line to the parent folder's memory (sub-folder roots), `## Hot` (current/unresolved, ≤5 links), `## Topic indexes` (one line per `indexes/*.md`), `## Leaves` (small roots only), `## Recent / pending curate` (new notes not yet routed). Each line = link + hook ≤80 chars. Never link to `raw/`. Keep under ~800 estimated tokens (ASCII ≈ 4 characters per token, other scripts ≈ 1 per character) and 25 links.
+- `MEMORY.md` (L0): sparse router. Sections in order: pointer line to the parent folder's memory (sub-folder roots), `## Hot` (current/unresolved, ≤5 links), `## Topic indexes` (one line per `indexes/*.md`), `## Leaves` (small roots only), `## Recent / pending curate` (new notes not yet routed; always last). Link lines above the first heading (Claude Code's built-in format) are pending as well. Each line = link + hook ≤80 chars. Never link to `raw/`. Keep under ~800 estimated tokens (ASCII ≈ 4 characters per token, other scripts ≈ 1 per character) and 25 links.
 - `indexes/<topic>.md` (L1): one topic per file, one line per note (`- [title](../distilled/<file>.md) — hook`). A note belongs to exactly one primary index; add a second link only for a genuinely different retrieval intent. Create a new index only when ≥3 notes share a topic that no existing index covers; otherwise use the closest existing index.
 - `distilled/*.md` (L2): the only place facts live. Frontmatter `name` (kebab-slug = filename) · `description` · `type` · `created`.
 - `raw/` (L3): provenance and pre-change copies. Never a retrieval source.
