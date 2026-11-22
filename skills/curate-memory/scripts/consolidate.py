@@ -35,7 +35,7 @@ MAX_GROUPS = 3
 # Hyphenated plain words (cut-to-size) are not facts. Proper nouns without digits are not caught → the user checks
 FACT = re.compile(r"https?://[^\s)>\]]+|[\w.+-]+@[\w-]+\.[\w.]+|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}"
                   r"|\d[\d,]*(?:\.\d+)?|[A-Za-z0-9]*(?:\d[A-Za-z0-9]*[-_]|[-_][A-Za-z0-9]*\d)[A-Za-z0-9_-]*|[A-Z]{2,}[A-Za-z0-9]*")
-ENUM = re.compile(r"(?m)^\s*(?:[-*]\s+)?\d+[.)]\s")   # list numbering such as "1. " is not a fact
+ENUM = re.compile(r"(?m)^\s*(?:[-*]\s+|#{1,6}\s+)?\d+[.)]\s")   # list or heading numbering such as "1. " or "## 2. " is not a fact
 
 
 WIKI = re.compile(r"\[\[[^\]]*\]\]")

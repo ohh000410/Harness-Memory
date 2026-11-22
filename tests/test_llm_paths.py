@@ -285,8 +285,10 @@ class SecondReview(Base):
         plan = json.loads(next((root / "raw/consolidate").glob("plan-*.json")).read_text(encoding="utf-8"))
         self.assertFalse(plan["groups"][0]["ok"])
 
+    def test_heading_numbers_are_not_facts(self):
+        self.assertEqual(consolidate.facts("## 2. Handle Series\n### 3) Scope\n1. first\nKeep 40 s."), {"40"})
 
-@unittest.skipUnless(sys.platform == "win32", "PowerShell hook")
+
 class BuiltInFormat(Base):
     """A memory in Claude Code's built-in format — note files at the top and one '- [title](file.md)' line each, no sections —
     as written by agents that know only that format (for example the Subagents plugins)"""
@@ -321,6 +323,7 @@ class BuiltInFormat(Base):
         self.assertEqual([l for l in text.split("\n") if l.startswith("## ")], ["## Leaves", "## Topic indexes", "## Recent / pending curate"])
 
 
+@unittest.skipUnless(sys.platform == "win32", "PowerShell hook")
 class Hook(unittest.TestCase):
     def test_existing_root_is_reconnected_not_rewritten(self):
         with tempfile.TemporaryDirectory() as tmp:
