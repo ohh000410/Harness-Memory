@@ -1,8 +1,8 @@
 ## Memory
 
-<!-- Paste into the session instructions (CLAUDE.md, AGENTS.md, or a SessionStart hook). Format details: docs/memory-layout.md -->
+<!-- Paste into each harness's instructions (Claude Code CLAUDE.md, Codex AGENTS.md, Antigravity GEMINI.md). Format details: docs/memory-layout.md -->
 
-- **Where**: the session's `autoMemoryDirectory`. Facts tied to this folder go there; ways of working, tool environment and user preferences go to the parent folder's memory.
+- **Where**: the folder's memory directory — Claude Code's `autoMemoryDirectory`; Codex and Antigravity get it as the `Memory directory:` line injected at session start. Facts tied to this folder go there; ways of working, tool environment and user preferences go to the parent folder's memory.
 - **File**: `distilled/<type>_<kebab-slug>.md` (type = user | feedback | project | reference). Frontmatter `name` (the file name in kebab case) · `description` · `type` · `created: YYYY-MM-DD`.
 - **Body**: user = the fact / feedback = rule + **Why:** + **How to apply:** / project = context + state with absolute dates / reference = pointer + purpose. Record limits and counter-evidence too.
 - **Register**: one line in `MEMORY.md` under `## Recent / pending curate` (link + hook ≤ 80 chars, no facts) and one line in `log.md`: `- [YYYY-MM-DD] saved | <slug> — <one line>`. Indexes, splits and link repair are done by the nightly `curate-memory` run — do not reorganize by hand.

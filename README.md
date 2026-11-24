@@ -2,11 +2,12 @@
 
 # Harness Memory
 
-**Claude Code 세션·에이전트용 파일 메모리와 매일 밤 정리 스킬**
+**Claude Code·Codex·Antigravity 가 함께 쓰는 파일 메모리와 매일 밤 정리 스킬**
 
-![Claude Code](https://img.shields.io/badge/Claude%20Code-%EB%A9%94%EB%AA%A8%EB%A6%AC-D97757) ![플랫폼 Windows](https://img.shields.io/badge/%ED%94%8C%EB%9E%AB%ED%8F%BC-Windows-0078D6) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB) ![라이선스 MIT](https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-MIT-3DA639)
+![하네스 Claude Code · Codex · Antigravity](https://img.shields.io/badge/%ED%95%98%EB%84%A4%EC%8A%A4-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Antigravity-D97757) ![플랫폼 Windows](https://img.shields.io/badge/%ED%94%8C%EB%9E%AB%ED%8F%BC-Windows-0078D6) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB) ![라이선스 MIT](https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-MIT-3DA639)
 
-작업 폴더마다 메모리를 하나씩 두고, 세션은 짧은 목록 파일만 읽고 시작합니다.<br>
+작업 폴더마다 메모리를 하나씩 두고, 어느 하네스로 열든 같은 메모리를 읽고 씁니다.<br>
+세션은 짧은 목록 파일만 읽고 시작하고,<br>
 메모가 쌓여도 매일 밤 정리 스크립트가 목차를 나누고 오래된 진행 기록을 치워 작게 유지합니다.
 
 </div>
@@ -48,6 +49,7 @@ flowchart LR
 
 이미 좋은 메모리 도구가 여럿 있지만(claude-mem, Basic Memory 등), 작성자 한 사람의 작업 환경에 딱 맞는 것이 없어 Claude Code 기본 메모리(마크다운 + `MEMORY.md`)에서 출발해 필요한 것만 붙였습니다.
 
+- **세 하네스가 같은 메모리** — Claude Code·Codex·Antigravity 를 번갈아 쓰는데, 하네스마다 메모리를 따로 두면 같은 사실이 세 곳에 갈라집니다. 폴더마다 메모리 하나를 셋이 함께 읽고 씁니다.
 - **작업 폴더마다 메모리** — 연구·생활 폴더가 수십 개라, 폴더마다 메모리를 따로 두고 하위 폴더는 상위 폴더 메모리를 함께 봅니다. 전역 메모리 하나로는 주제가 섞입니다.
 - **정리는 코드가, LLM 은 판단만** — LLM 이 메모를 직접 고쳐 쓰지 않습니다. 바꾸기 전 백업, 바꾼 뒤 검증, 끝난 진행 기록만 보관으로 옮기고 지우지 않습니다.
 - **추가 비용·상주 프로세스 없음** — 정리 LLM 은 쓰던 Claude 구독의 `claude -p`, 서버·DB·임베딩 API 가 없습니다.
@@ -62,8 +64,10 @@ flowchart LR
 | 경로 | 하는 일 |
 |---|---|
 | `docs/memory-layout.md` | 메모리 형식 — 목록(L0) → 주제 목차(L1) → 메모(L2) → 원본 기록(raw), 메모 머리말·링크·보관·소유권 규칙 |
-| `templates/memory-rules.md` | 세션 지침(CLAUDE.md 등)에 붙여 넣는 저장 규칙 |
-| `hooks/ensure-memory-dir.ps1` | SessionStart 훅 — 처음 연 작업 폴더에 메모리를 만들고 Claude Code `autoMemoryDirectory` 를 연결. 하위 폴더는 상위 폴더 메모리를 함께 봄 |
+| `templates/memory-rules.md` | 세션 지침(CLAUDE.md·AGENTS.md·GEMINI.md)에 붙여 넣는 저장 규칙 |
+| `hooks/ensure-memory-dir.ps1` | 세션 시작 훅(세 하네스 공통) — 처음 연 작업 폴더에 메모리를 만들고 폴더 설정 `autoMemoryDirectory` 에 기록. 하위 폴더는 상위 폴더 메모리를 함께 봄 |
+| `hooks/inject-memory-index.ps1` | Codex 세션 시작 훅 — 그 폴더 메모리의 `MEMORY.md` 를 세션에 넣음(Claude Code 는 스스로 읽음) |
+| `hooks/agy-session-start.ps1` | Antigravity 훅 — 대화의 첫 호출에서 위 두 훅을 돌려 결과를 넣음(agy 에는 세션 시작 이벤트가 없음) |
 | `skills/curate-memory/` | 정리 스킬 — `curate.py`(매일 밤), `consolidate.py`(요청할 때 흩어진 지식을 메모 하나로 합침) |
 | `scripts/register-nightly.ps1` | 작업 스케줄러에 매일 정리 등록 |
 | `tests/` | 지어낸 가짜 메모로 하는 시험(LLM 없이) |
@@ -84,8 +88,13 @@ flowchart LR
 ## 설치
 
 1. 이 저장소를 받고 `config.example.json` 을 `config.json` 으로 복사해 `workspace`(하위 폴더마다 메모리를 둘 작업 폴더)를 적습니다. `roots` 를 적으면 기본값과 합쳐지지 않으니 정리할 위치를 모두 적습니다.
-2. 스킬을 Claude Code 에 연결합니다 — `skills/curate-memory` 를 `~/.claude/skills/curate-memory` 로 링크(PowerShell 에서는 `cmd /c mklink /J <링크> <원본>`, 상위 `skills` 폴더가 없으면 먼저 만듦). 링크하면 스크립트가 저장소의 `config.json` 을 찾습니다. 복사했다면 `setx MEMORY_CURATION_CONFIG C:\path\to\harness-memory\config.json`.
-3. `~/.claude/settings.json` 에 훅과 설정 하나를 넣습니다.
+2. 쓰는 하네스에 스킬을 연결합니다(PowerShell 에서 정션은 `cmd /c mklink /J <링크> <원본>`, 상위 폴더가 없으면 먼저 만듦). 링크하면 스크립트가 저장소의 `config.json` 을 찾습니다. 복사했다면 `setx MEMORY_CURATION_CONFIG C:\path\to\harness-memory\config.json`.
+   - Claude Code: `~/.claude/skills/curate-memory` → `<저장소>/skills/curate-memory`
+   - Codex: `~/.agents/skills/curate-memory` → 같은 곳
+   - Antigravity: `~/.gemini/config/skills.json` 의 `entries` 에 `{"path": "C:/path/to/harness-memory/skills"}` (agy 는 이 폴더 안 정션을 건너뛰고, 이 목록의 경로는 바로 읽음)
+3. 쓰는 하네스에 세션 시작 훅을 넣습니다. 경로는 저장소 위치로 바꿉니다.
+
+   **Claude Code** — `~/.claude/settings.json`
 
    ```json
    {
@@ -100,7 +109,33 @@ flowchart LR
    ```
 
    `env` 설정은 명령마다 셸을 세션 폴더로 되돌립니다. 없으면 하위 폴더로 `cd` 한 채 대화를 압축(/compact)할 때 훅이 그 하위 폴더를 받아 엉뚱한 메모리가 생깁니다.
-4. [templates/memory-rules.md](templates/memory-rules.md) 를 `CLAUDE.md` 등 세션 지침에 붙여 넣습니다.
+
+   **Codex** — `~/.codex/hooks.json` (순서대로: 메모리를 만들고, 그 목록을 넣음). 넣은 뒤 Codex 에서 `/hooks` 로 훅을 승인합니다.
+
+   ```json
+   {
+     "SessionStart": [
+       { "matcher": "*", "hooks": [ { "type": "command", "timeout": 10,
+         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\ensure-memory-dir.ps1\"" } ] },
+       { "matcher": "*", "hooks": [ { "type": "command", "timeout": 10,
+         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\inject-memory-index.ps1\"" } ] }
+     ]
+   }
+   ```
+
+   **Antigravity (agy)** — `~/.gemini/config/hooks.json` 에 이름 붙은 묶음 하나. agy 는 명령 안 따옴표를 깨뜨리므로 경로에 공백이 없는 곳에 저장소를 둡니다.
+
+   ```json
+   {
+     "harness-memory": {
+       "PreInvocation": [
+         { "type": "command", "timeout": 30,
+           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\path\\to\\harness-memory\\hooks\\agy-session-start.ps1" }
+       ]
+     }
+   }
+   ```
+4. [templates/memory-rules.md](templates/memory-rules.md) 를 쓰는 하네스의 지침 파일에 붙여 넣습니다 — Claude Code `~/.claude/CLAUDE.md`, Codex `~/.codex/AGENTS.md`, Antigravity `~/.gemini/GEMINI.md`.
 5. 매일 정리를 등록합니다: `powershell -ExecutionPolicy Bypass -File scripts\register-nightly.ps1` (`-At 04:30`, `-Python <경로>`, `-Remove`). 로그온한 동안 내 계정으로 돌고, 실행 때 콘솔 창이 뜹니다. `python`·`claude` 가 작업 스케줄러의 PATH 에서 보여야 합니다.
 
 에이전트 메모리(`roots.agent`, 기본값은 Claude Code 의 에이전트 메모리 폴더 `~/.claude/agent-memory`)는 선택입니다. 정리는 세션 메모리와 같고 보관 기간만 180일입니다. 서브에이전트를 쓰지 않으면 설정에서 `agent` 를 지웁니다.
@@ -135,7 +170,7 @@ python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메�
 
 - Windows — 훅과 스케줄러 등록이 PowerShell 입니다(Python 스크립트는 어디서나 돕니다)
 - Python 3.10+ (추가 패키지 없음)
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI — LLM 판단용. `--no-llm` 이면 없어도 코드 고치기는 됩니다
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI — 밤 정리의 LLM 판단(`claude -p`)용. Codex·Antigravity 만 쓰더라도 정리에는 필요합니다. `--no-llm` 이면 없어도 코드 고치기는 됩니다
 
 <br>
 
@@ -143,7 +178,7 @@ python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메�
 
 - LLM 은 메모리 하나씩만 봅니다 — 메모리 사이의 중복은 못 찾습니다
 - 폴더 이름에 `__` 를 쓰지 마세요 — 메모리 이름이 경로 구분을 `__` 로 바꿔 만들어져 `a\b` 와 `a__b` 가 같은 이름이 됩니다
-- 작성자의 Windows 11 PC 한 대에서 확인했습니다
+- 작성자의 Windows 11 PC 한 대에서 확인했습니다. Codex·Antigravity 훅은 각 하네스의 훅 입력 형식에 기대므로, 형식이 바뀌면 다시 맞춰야 합니다
 
 <br>
 

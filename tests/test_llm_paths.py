@@ -343,5 +343,48 @@ class Hook(unittest.TestCase):
             self.assertIn("ws__proj", (ws / "proj/.claude/settings.local.json").read_text(encoding="utf-8"))
 
 
+@unittest.skipUnless(sys.platform == "win32", "PowerShell hook")
+class OtherHarnesses(unittest.TestCase):
+    """Codex runs ensure-memory-dir + inject-memory-index at SessionStart; agy runs both through agy-session-start
+    on the first model call of a conversation. All of them must end up with the same root Claude Code uses."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.ws, self.mem = t / "ws", t / "mem"
+        (self.ws / "proj").mkdir(parents=True)
+        cfg = t / "c.json"
+        cfg.write_text(json.dumps({"workspace": str(self.ws), "roots": {"main": str(self.mem)}}), encoding="utf-8")
+        self.env = {**os.environ, "MEMORY_CURATION_CONFIG": str(cfg)}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def hook(self, name, payload):
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(HOOK.parent / name)],
+                           input=json.dumps(payload).encode(), capture_output=True, env=self.env)
+        out = r.stdout.decode("utf-8", "replace").strip()
+        return json.loads(out) if out else {}
+
+    def test_codex_gets_the_index_of_the_root_claude_uses(self):
+        self.hook("ensure-memory-dir.ps1", {"cwd": str(self.ws / "proj")})
+        out = self.hook("inject-memory-index.ps1", {"cwd": str(self.ws / "proj")})
+        text = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Memory directory: " + str(self.mem / "ws__proj").replace("\\", "/"), text)
+        self.assertIn("# Memory Index: proj", text)
+
+    def test_folder_without_memory_gets_nothing(self):
+        self.assertEqual(self.hook("inject-memory-index.ps1", {"cwd": str(self.ws / "proj")}), {})
+
+    def test_agy_first_call_only(self):
+        first = self.hook("agy-session-start.ps1", {"initialNumSteps": 1, "invocationNum": 0,
+                                                     "workspacePaths": [str(self.ws / "proj").replace("\\", "/")]})
+        text = first["injectSteps"][0]["userMessage"]
+        self.assertIn("Created this folder's memory root", text)   # ensure-memory-dir ran
+        self.assertIn("# Memory Index: proj", text)                  # and the index of that root came along
+        later = self.hook("agy-session-start.ps1", {"initialNumSteps": 3, "invocationNum": 2,
+                                                     "workspacePaths": [str(self.ws / "proj")]})
+        self.assertEqual(later, {})
+
+
 if __name__ == "__main__":
     unittest.main()

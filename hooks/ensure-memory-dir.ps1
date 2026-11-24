@@ -1,4 +1,6 @@
-﻿# Claude Code SessionStart hook: give every working folder under the workspace its own memory root.
+﻿# SessionStart hook (Claude Code, Codex; agy through agy-session-start.ps1): give every working folder under the workspace
+# its own memory root. The root is recorded in the folder's Claude Code setting, which inject-memory-index.ps1 reads for the
+# other harnesses, so all of them share one memory per folder.
 # The first session in a folder creates <main root>/<workspace-name>__<relative path joined by __>/ with MEMORY.md and log.md,
 # writes autoMemoryDirectory into the folder's .claude/settings.local.json (existing keys kept),
 # and tells the session where to save. A folder that already has autoMemoryDirectory, or autoMemoryEnabled false, is left alone.
