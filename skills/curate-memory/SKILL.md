@@ -12,7 +12,7 @@ python -X utf8 <skill>/scripts/curate.py --only <root>
 ```
 
 - `--dry-run` reports the work without changes or LLM calls (`--llm-dry` also asks the LLM, still no writes). `--no-llm` does only the code fixes.
-- `--path <dir>` runs one folder anywhere (tests). `--only` and `--path` leave the checkpoint alone.
+- `--path <dir>` runs one folder anywhere (tests). `--only` advances only that root's checkpoint entry (the nightly run does not redo its changes) and stops with `ERROR no such root` for an unknown name; `--path` leaves the checkpoint alone.
 - `--config <file>` (or env `MEMORY_CURATION_CONFIG`, or `config.json` in the repository root): memory locations, log folder, `claude` command, `model` (routing, index splits), `model_heavy` (note splits, consolidation), archive days — see `config.example.json`.
 - Report: `<logs>/curate-report-<time>/REPORT.md` (a `--path` run: next to that folder) — per root: findings, actions, what could not be done, verification, LLM calls and cost. Exit 3 = a root failed verification; that root's checkpoint entry is not advanced, so its changes are retried next night (other roots advance).
 - First run: roots not yet in the checkpoint take their current state as the baseline — only findings are processed, not every note as "changed".

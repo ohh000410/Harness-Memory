@@ -147,6 +147,45 @@ class Checkpoint(unittest.TestCase):
             self.assertIn(str(group / "gamma"), roots)
             self.assertNotIn(str(group / "alpha"), roots)
 
+    def setup_two_roots(self, t):
+        group = t / "group"
+        for name in ("one", "two"):
+            (group / name / "distilled").mkdir(parents=True)
+            (group / name / "distilled/reference_a.md").write_text(
+                "---\nname: reference-a\ndescription: \"A\"\ntype: reference\n---\n\nFact.\n", encoding="utf-8")
+            (group / name / "MEMORY.md").write_text("# M\n\n## Leaves\n- [a](distilled/reference_a.md) — a\n\n## Recent / pending curate\n",
+                                                   encoding="utf-8")
+        cfg = t / "config.json"
+        cfg.write_text(json.dumps({"roots": {"main": str(group)}, "logs": str(t / "logs")}), encoding="utf-8")
+        return group, {**os.environ, "MEMORY_CURATION_CONFIG": str(cfg)}
+
+    def curate(self, env, *args):
+        return subprocess.run([sys.executable, "-X", "utf8", str(CURATE), "--no-llm", *args], capture_output=True, text=True,
+                              encoding="utf-8", env=env)
+
+    def test_only_advances_just_that_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            group, env = self.setup_two_roots(t)
+            self.assertEqual(self.curate(env).returncode, 0)   # nightly run: baseline for both roots
+            for name in ("one", "two"):
+                (group / name / "distilled/reference_a.md").write_text(
+                    "---\nname: reference-a\ndescription: \"A\"\ntype: reference\n---\n\nFact, edited.\n", encoding="utf-8")
+            before = json.loads((t / "logs/checkpoint.json").read_text(encoding="utf-8"))["roots"]
+            r = self.curate(env, "--only", "one")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            after = json.loads((t / "logs/checkpoint.json").read_text(encoding="utf-8"))["roots"]
+            self.assertNotEqual(after[str(group / "one")], before[str(group / "one")])   # handled now, not again tonight
+            self.assertEqual(after[str(group / "two")], before[str(group / "two")])       # still pending for the nightly run
+
+    def test_unknown_only_name_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            _, env = self.setup_two_roots(t)
+            r = self.curate(env, "--only", "on")
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("ERROR no such root on", r.stdout + r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

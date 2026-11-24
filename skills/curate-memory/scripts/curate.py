@@ -13,7 +13,8 @@ usage: python -X utf8 curate.py [--only ROOT | --path DIR] [--config FILE] [--dr
   JSON — code validates before applying; anything unusable is skipped and reported.
 - Splitting: code cuts the original text verbatim and checks that the joined parts are byte-identical to the body.
 - --dry-run: report the work without changing files (no LLM calls either; --llm-dry makes the calls).
-- --path: that one folder only (test mode, checkpoint untouched). --only: the root with that name only (checkpoint untouched).
+- --path: that one folder only (test mode, checkpoint untouched). --only: the root with that name only (advances only that
+  root's checkpoint entry; an unknown name is an error).
 - Config: --config FILE, else env MEMORY_CURATION_CONFIG, else config.json in the repository root, else built-in defaults.
 """
 import argparse
@@ -1032,7 +1033,7 @@ def verify(root, before, live, dry):
 
 def main():
     ap = argparse.ArgumentParser(description="Curate file-based memory roots (see the module docstring).")
-    ap.add_argument("--only", help="only the root with this folder name (checkpoint untouched)")
+    ap.add_argument("--only", help="only the root with this folder name (advances only its checkpoint entry)")
     ap.add_argument("--path", help="only this folder, as a main root (test mode, checkpoint untouched)")
     ap.add_argument("--config", help="JSON config file (default: env MEMORY_CURATION_CONFIG, else config.json in the repository root)")
     ap.add_argument("--dry-run", action="store_true", help="report the work without changing files or calling the LLM")
@@ -1051,6 +1052,8 @@ def main():
         all_roots = [Root(g, p) for g, base in CFG.groups.items() if base.exists()
                      for p in sorted(base.iterdir()) if p.is_dir() and not p.name.startswith(".") and not (p / ".curate-ignore").exists()]
         roots = [r for r in all_roots if not args.only or r.name == args.only]
+        if args.only and not roots:   # a mistyped name must not look like "nothing to do"
+            sys.exit(f"ERROR no such root {args.only} (or it has .curate-ignore)")
     cp = json.loads(CFG.checkpoint.read_text(encoding="utf-8-sig")) if CFG.checkpoint.exists() and not args.path else {}
     prev_all = cp.get("roots", {})
     live = live_keys(all_roots)
@@ -1089,10 +1092,12 @@ def main():
     lines.insert(2, f"- roots processed {sum(1 for l in lines if l.startswith('## '))} / total {len(roots)}, LLM cost total ${total:.3f}, roots failing verification {failed}")
     (out_dir / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Report: {out_dir / 'REPORT.md'}")
-    if not args.dry_run and not args.only and not args.path:
-        # per root: a root that failed verification keeps its previous entry, so its changes are retried next run
-        snap = {"schema_version": 3, "updated_at": NOW.isoformat(), "roots": {}}
-        for r in all_roots:
+    if not args.dry_run and not args.path:
+        # per root: a root that failed verification keeps its previous entry, so its changes are retried next run.
+        # --only advances just that root and keeps every other entry as it was — otherwise the next nightly run would send
+        # the changes this run already handled to the LLM a second time
+        snap = {"schema_version": 3, "updated_at": NOW.isoformat(), "roots": dict(prev_all) if args.only else {}}
+        for r in (roots if args.only else all_roots):
             k = str(r.path)
             if k in failed_paths:
                 if k in prev_all:
