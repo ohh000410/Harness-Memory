@@ -17,7 +17,7 @@ AI 에이전트용 설치·사용 안내. 사람용 소개는 `README.md`.
 4. 세션 시작 훅(설정 파일은 먼저 백업, 기존 키·훅은 모두 유지). 명령은 `powershell -NoProfile -ExecutionPolicy Bypass -File "<저장소>\hooks\<훅>.ps1"`.
    - Claude Code `%USERPROFILE%\.claude\settings.json`: `env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR = "1"`, `SessionStart` 에 `ensure-memory-dir.ps1`
    - Codex `%USERPROFILE%\.codex\hooks.json`(`CODEX_HOME` 이 있으면 그 아래): 최상위 `hooks` 객체의 `SessionStart` 에 `inject-memory-index.ps1` 하나(메모리 만들기까지 그 안에서 함 — 둘로 나누면 함께 시작돼 첫 세션에 목록이 빠짐). 사용자가 Codex 에서 `/hooks` 로 승인해야 돈다
-   - agy(1.5.16) `%USERPROFILE%\.gemini\config\hooks.json`: 이름 붙은 묶음(예: `"harness-memory"`) 의 `SessionStart` 에 `agy-session-start.ps1`, timeout 30. `SessionStart` 항목은 matcher 없이 바로 나열
+   - agy(1.5.16) `%USERPROFILE%\.gemini\config\hooks.json`: 이름 붙은 묶음(예: `"harness-memory"`) 의 `PreInvocation` 에 `agy-session-start.ps1`, timeout 30, matcher 없이 바로 나열. `SessionStart` 는 쓰지 않는다 — 서브에이전트 대화에서도 돌아 메인 대화와 구분할 수 없음
    - JSON 모양은 `README.md` 「설치」 3번
 5. `templates/memory-rules.md` 를 하네스 지침 파일 끝에 붙인다 — Claude Code `%USERPROFILE%\.claude\CLAUDE.md`, Codex `%USERPROFILE%\.codex\AGENTS.md`, agy `%USERPROFILE%\.gemini\GEMINI.md`. 글을 먼저 보여 준다.
 6. 실제 메모리를 건드리지 않고 확인: 저장소 폴더에서 `python -X utf8 -m unittest discover tests`, 그다음 `python -X utf8 skills/curate-memory/scripts/curate.py --dry-run`(메모리·LLM 안 건드림, 보고서만 씀) 후 보고서를 요약한다.

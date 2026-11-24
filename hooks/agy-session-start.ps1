@@ -1,12 +1,15 @@
-﻿# Antigravity CLI (agy) SessionStart hook (agy 1.5.16: runs once when a conversation starts). Runs inject-memory-index.ps1 —
-# the hook Codex uses, which creates the folder's memory root and returns its MEMORY.md — and hands that text to agy as a
-# system message, which stays in the conversation across turns. agy expects injectSteps on stdout, not Claude Code's
-# hookSpecificOutput, hence this small adapter.
+﻿# Antigravity CLI (agy) hook, registered on PreInvocation (every model call). It acts only on the first call of the main
+# conversation (initialNumSteps 1, invocationNum 0): runs inject-memory-index.ps1 — the hook Codex uses, which creates the
+# folder's memory root and returns its MEMORY.md — and hands that text to agy as a system message, which stays in the
+# conversation across turns.
+# Not SessionStart: in agy 1.5.16 it also fires for every subagent conversation, with no field that tells the two apart,
+# so subagents would get the folder's memory too. A subagent's first call is initialNumSteps 0, invocationNum 0 (measured).
 $ErrorActionPreference = 'Stop'
 $utf8 = [System.Text.UTF8Encoding]::new($false)
-$inputText = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), $utf8).ReadToEnd()
-$cwd = [string]($inputText | ConvertFrom-Json).cwd
+$hookInput = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), $utf8).ReadToEnd() | ConvertFrom-Json
 [Console]::OutputEncoding = $utf8
+if ($hookInput.initialNumSteps -ne 1 -or $hookInput.invocationNum -ne 0) { [Console]::Out.Write('{}'); exit 0 }
+$cwd = [string]$hookInput.cwd
 if (-not $cwd) { [Console]::Out.Write('{}'); exit 0 }
 
 $childInput = @{ cwd = ($cwd -replace '/', '\'); hook_event_name = 'SessionStart'; source = 'startup' } | ConvertTo-Json -Compress

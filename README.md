@@ -67,7 +67,7 @@ flowchart LR
 | `templates/memory-rules.md` | 세션 지침(CLAUDE.md·AGENTS.md·GEMINI.md)에 붙여 넣는 저장 규칙 |
 | `hooks/ensure-memory-dir.ps1` | Claude Code 세션 시작 훅 — 처음 연 작업 폴더에 메모리를 만들고 폴더 설정 `autoMemoryDirectory` 에 기록(Claude Code 는 그 `MEMORY.md` 를 스스로 읽음). 하위 폴더는 상위 폴더 메모리를 함께 봄 |
 | `hooks/inject-memory-index.ps1` | Codex 세션 시작 훅 — 위 훅을 먼저 돌려 메모리를 만들고, 그 `MEMORY.md` 를 세션에 넣음 |
-| `hooks/agy-session-start.ps1` | Antigravity 세션 시작 훅 — 위 Codex 훅을 돌려 그 결과를 agy 형식(시스템 메시지)으로 넣음 |
+| `hooks/agy-session-start.ps1` | Antigravity 훅 — 메인 대화의 첫 호출에서 위 Codex 훅을 돌려 그 결과를 시스템 메시지로 넣음(서브에이전트 대화에는 안 넣음) |
 | `skills/curate-memory/` | 정리 스킬 — `curate.py`(매일 밤), `consolidate.py`(요청할 때 흩어진 지식을 메모 하나로 합침) |
 | `scripts/register-nightly.ps1` | 작업 스케줄러에 매일 정리 등록 |
 | `tests/` | 지어낸 가짜 메모로 하는 시험(LLM 없이) |
@@ -127,12 +127,12 @@ flowchart LR
    }
    ```
 
-   **Antigravity (agy 1.5.16)** — `~/.gemini/config/hooks.json` 에 이름 붙은 묶음 하나. `SessionStart` 는 새 대화에서 한 번 돌고, 메모리 목록은 대화 내내 남는 시스템 메시지로 들어갑니다.
+   **Antigravity (agy 1.5.16)** — `~/.gemini/config/hooks.json` 에 이름 붙은 묶음 하나. 모델 호출마다 돌지만 메인 대화의 첫 호출에서만 메모리 목록을 넣고(대화 내내 남는 시스템 메시지), 서브에이전트 대화에는 넣지 않습니다. agy 의 `SessionStart` 는 서브에이전트 대화에서도 돌아 둘을 가를 수 없어서 쓰지 않습니다.
 
    ```json
    {
      "harness-memory": {
-       "SessionStart": [
+       "PreInvocation": [
          { "type": "command", "timeout": 30,
            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\agy-session-start.ps1\"" }
        ]

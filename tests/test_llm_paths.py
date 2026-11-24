@@ -405,25 +405,35 @@ class OtherHarnesses(unittest.TestCase):
         self.assertEqual((rc, err), (0, ""))
         self.assertIn("# manual index", out["hookSpecificOutput"]["additionalContext"])
 
-    def test_agy_session_start(self):
-        """agy 1.5.16 SessionStart: input has cwd; output is injectSteps with a nested systemMessage"""
-        rc, out, err = self.hook("agy-session-start.ps1", {"hookEventName": "SessionStart", "cwd": str(self.proj).replace("\\", "/"),
-                                                            "workspacePaths": [str(self.proj).replace("\\", "/")]})
+    def agy(self, steps, invocation):
+        return self.hook("agy-session-start.ps1", {"hookEventName": "PreInvocation", "initialNumSteps": steps, "invocationNum": invocation,
+                                                    "cwd": str(self.proj).replace("\\", "/"), "workspacePaths": [str(self.proj).replace("\\", "/")]})
+
+    def test_agy_main_first_call_gets_the_index(self):
+        """agy 1.5.16 PreInvocation: main conversation's first call is initialNumSteps 1, invocationNum 0; output is a nested systemMessage"""
+        rc, out, err = self.agy(1, 0)
         self.assertEqual((rc, err), (0, ""))
         text = out["injectSteps"][0]["systemMessage"]["systemMessage"]
         self.assertIn("Created this folder's memory root", text)
         self.assertIn("# Memory Index: 새 폴더 a", text)
         self.assertEqual(text.count("memory root"), 1)   # the root is created once, not by two hooks
 
+    def test_agy_subagent_and_later_calls_get_nothing(self):
+        """a subagent conversation starts at initialNumSteps 0, invocationNum 0 (measured); later calls have invocationNum > 0"""
+        for steps, invocation in ((0, 0), (3, 1), (4, 2), (1, 1)):
+            self.assertEqual(self.agy(steps, invocation), (0, {}, ""), (steps, invocation))
+        self.assertFalse(self.mem.exists())   # not even the root is created outside the main first call
+
     def test_readme_agy_hooks_json_shape(self):
-        """agy SessionStart handlers are a flat list (no matcher wrapper), inside a named group"""
+        """agy PreInvocation handlers are a flat list (no matcher wrapper), inside a named group — not SessionStart, which
+        also fires for subagent conversations"""
         readme = (HOOK.parents[1] / "README.md").read_text(encoding="utf-8")
         blocks = [json.loads(b) for b in re.findall(r"```json\n(.*?)```", readme, re.S)]
         agy = [b for b in blocks if "agy-session-start" in json.dumps(b)]
         self.assertEqual(len(agy), 1)
         (group,) = agy[0].values()
-        self.assertEqual(list(group), ["SessionStart"])
-        self.assertIn("agy-session-start.ps1", group["SessionStart"][0]["command"])
+        self.assertEqual(list(group), ["PreInvocation"])
+        self.assertIn("agy-session-start.ps1", group["PreInvocation"][0]["command"])
 
     def test_readme_codex_hooks_json_shape(self):
         """Codex rejects hooks.json without the top-level "hooks" object (Codex 0.169: unknown field SessionStart)"""
