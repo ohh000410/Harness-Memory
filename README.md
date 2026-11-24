@@ -65,9 +65,9 @@ flowchart LR
 |---|---|
 | `docs/memory-layout.md` | 메모리 형식 — 목록(L0) → 주제 목차(L1) → 메모(L2) → 원본 기록(raw), 메모 머리말·링크·보관·소유권 규칙 |
 | `templates/memory-rules.md` | 세션 지침(CLAUDE.md·AGENTS.md·GEMINI.md)에 붙여 넣는 저장 규칙 |
-| `hooks/ensure-memory-dir.ps1` | 세션 시작 훅(세 하네스 공통) — 처음 연 작업 폴더에 메모리를 만들고 폴더 설정 `autoMemoryDirectory` 에 기록. 하위 폴더는 상위 폴더 메모리를 함께 봄 |
-| `hooks/inject-memory-index.ps1` | Codex 세션 시작 훅 — 그 폴더 메모리의 `MEMORY.md` 를 세션에 넣음(Claude Code 는 스스로 읽음) |
-| `hooks/agy-session-start.ps1` | Antigravity 훅 — 대화의 첫 호출에서 위 두 훅을 돌려 결과를 넣음(agy 에는 세션 시작 이벤트가 없음) |
+| `hooks/ensure-memory-dir.ps1` | Claude Code 세션 시작 훅 — 처음 연 작업 폴더에 메모리를 만들고 폴더 설정 `autoMemoryDirectory` 에 기록(Claude Code 는 그 `MEMORY.md` 를 스스로 읽음). 하위 폴더는 상위 폴더 메모리를 함께 봄 |
+| `hooks/inject-memory-index.ps1` | Codex 세션 시작 훅 — 위 훅을 먼저 돌려 메모리를 만들고, 그 `MEMORY.md` 를 세션에 넣음 |
+| `hooks/agy-session-start.ps1` | Antigravity 세션 시작 훅 — 위 Codex 훅을 돌려 그 결과를 agy 형식(시스템 메시지)으로 넣음 |
 | `skills/curate-memory/` | 정리 스킬 — `curate.py`(매일 밤), `consolidate.py`(요청할 때 흩어진 지식을 메모 하나로 합침) |
 | `scripts/register-nightly.ps1` | 작업 스케줄러에 매일 정리 등록 |
 | `tests/` | 지어낸 가짜 메모로 하는 시험(LLM 없이) |
@@ -91,7 +91,11 @@ flowchart LR
 2. 쓰는 하네스에 스킬을 연결합니다(PowerShell 에서 정션은 `cmd /c mklink /J <링크> <원본>`, 상위 폴더가 없으면 먼저 만듦). 링크하면 스크립트가 저장소의 `config.json` 을 찾습니다. 복사했다면 `setx MEMORY_CURATION_CONFIG C:\path\to\harness-memory\config.json`.
    - Claude Code: `~/.claude/skills/curate-memory` → `<저장소>/skills/curate-memory`
    - Codex: `~/.agents/skills/curate-memory` → 같은 곳
-   - Antigravity: `~/.gemini/config/skills.json` 의 `entries` 에 `{"path": "C:/path/to/harness-memory/skills"}` (agy 는 이 폴더 안 정션을 건너뛰고, 이 목록의 경로는 바로 읽음)
+   - Antigravity: `~/.gemini/config/skills.json` 에 저장소의 `skills` 폴더를 적음(없으면 새로 만듦, 경로는 `/` 와 드라이브 문자). agy 는 `~/.gemini/config/skills` 안의 정션은 건너뛰지만 이 목록의 경로는 바로 읽습니다.
+
+     ```json
+     { "entries": [ { "path": "C:/path/to/harness-memory/skills" } ] }
+     ```
 3. 쓰는 하네스에 세션 시작 훅을 넣습니다. 경로는 저장소 위치로 바꿉니다.
 
    **Claude Code** — `~/.claude/settings.json`
@@ -110,27 +114,27 @@ flowchart LR
 
    `env` 설정은 명령마다 셸을 세션 폴더로 되돌립니다. 없으면 하위 폴더로 `cd` 한 채 대화를 압축(/compact)할 때 훅이 그 하위 폴더를 받아 엉뚱한 메모리가 생깁니다.
 
-   **Codex** — `~/.codex/hooks.json` (순서대로: 메모리를 만들고, 그 목록을 넣음). 넣은 뒤 Codex 에서 `/hooks` 로 훅을 승인합니다.
+   **Codex** — `~/.codex/hooks.json` (`CODEX_HOME` 을 쓰면 `$CODEX_HOME/hooks.json`). 훅 하나가 메모리를 만들고 그 목록을 넣습니다 — 둘로 나눠 등록하면 Codex 가 함께 시작해 새 폴더의 첫 세션에 목록이 빠집니다. 넣은 뒤 Codex 에서 `/hooks` 로 훅을 승인합니다.
 
    ```json
    {
-     "SessionStart": [
-       { "matcher": "*", "hooks": [ { "type": "command", "timeout": 10,
-         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\ensure-memory-dir.ps1\"" } ] },
-       { "matcher": "*", "hooks": [ { "type": "command", "timeout": 10,
-         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\inject-memory-index.ps1\"" } ] }
-     ]
+     "hooks": {
+       "SessionStart": [
+         { "matcher": "*", "hooks": [ { "type": "command", "timeout": 10,
+           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\inject-memory-index.ps1\"" } ] }
+       ]
+     }
    }
    ```
 
-   **Antigravity (agy)** — `~/.gemini/config/hooks.json` 에 이름 붙은 묶음 하나. agy 는 명령 안 따옴표를 깨뜨리므로 경로에 공백이 없는 곳에 저장소를 둡니다.
+   **Antigravity (agy 1.5.16)** — `~/.gemini/config/hooks.json` 에 이름 붙은 묶음 하나. `SessionStart` 는 새 대화에서 한 번 돌고, 메모리 목록은 대화 내내 남는 시스템 메시지로 들어갑니다.
 
    ```json
    {
      "harness-memory": {
-       "PreInvocation": [
+       "SessionStart": [
          { "type": "command", "timeout": 30,
-           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\path\\to\\harness-memory\\hooks\\agy-session-start.ps1" }
+           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\to\\harness-memory\\hooks\\agy-session-start.ps1\"" }
        ]
      }
    }
@@ -178,7 +182,7 @@ python -X utf8 skills/curate-memory/scripts/consolidate.py propose --only <메�
 
 - LLM 은 메모리 하나씩만 봅니다 — 메모리 사이의 중복은 못 찾습니다
 - 폴더 이름에 `__` 를 쓰지 마세요 — 메모리 이름이 경로 구분을 `__` 로 바꿔 만들어져 `a\b` 와 `a__b` 가 같은 이름이 됩니다
-- 작성자의 Windows 11 PC 한 대에서 확인했습니다. Codex·Antigravity 훅은 각 하네스의 훅 입력 형식에 기대므로, 형식이 바뀌면 다시 맞춰야 합니다
+- 작성자의 Windows 11 PC 한 대에서 확인했습니다(Codex 0.169, agy 1.5.16). Codex·Antigravity 훅은 각 하네스의 훅 형식에 기대므로, 형식이 바뀌면 다시 맞춰야 합니다
 
 <br>
 

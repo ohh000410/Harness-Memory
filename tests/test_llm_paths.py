@@ -1,6 +1,7 @@
 """Paths that need LLM decisions, with the LLM replaced by a stub returning fixed JSON. Run: python -X utf8 -m unittest discover tests"""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -345,13 +346,15 @@ class Hook(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "win32", "PowerShell hook")
 class OtherHarnesses(unittest.TestCase):
-    """Codex runs ensure-memory-dir + inject-memory-index at SessionStart; agy runs both through agy-session-start
-    on the first model call of a conversation. All of them must end up with the same root Claude Code uses."""
+    """Codex runs inject-memory-index (which runs ensure-memory-dir first) at SessionStart; agy runs it through
+    agy-session-start at its SessionStart. Both must get the root Claude Code uses, on the very first session in a new
+    folder — two separately registered hooks start together in Codex and the index went missing."""
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         t = Path(self.tmp.name)
         self.ws, self.mem = t / "ws", t / "mem"
-        (self.ws / "proj").mkdir(parents=True)
+        (self.ws / "새 폴더 a").mkdir(parents=True)   # space and Hangul in the path
+        self.proj = self.ws / "새 폴더 a"
         cfg = t / "c.json"
         cfg.write_text(json.dumps({"workspace": str(self.ws), "roots": {"main": str(self.mem)}}), encoding="utf-8")
         self.env = {**os.environ, "MEMORY_CURATION_CONFIG": str(cfg)}
@@ -360,30 +363,76 @@ class OtherHarnesses(unittest.TestCase):
         self.tmp.cleanup()
 
     def hook(self, name, payload):
+        """(exit code, parsed stdout or {}, stderr) — failures must be visible, not an empty result"""
         r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(HOOK.parent / name)],
-                           input=json.dumps(payload).encode(), capture_output=True, env=self.env)
+                           input=json.dumps(payload).encode("utf-8"), capture_output=True, env=self.env)
         out = r.stdout.decode("utf-8", "replace").strip()
-        return json.loads(out) if out else {}
+        return r.returncode, (json.loads(out) if out else {}), r.stderr.decode("utf-8", "replace")
 
-    def test_codex_gets_the_index_of_the_root_claude_uses(self):
-        self.hook("ensure-memory-dir.ps1", {"cwd": str(self.ws / "proj")})
-        out = self.hook("inject-memory-index.ps1", {"cwd": str(self.ws / "proj")})
+    def test_codex_first_session_in_a_new_folder_gets_the_index(self):
+        rc, out, err = self.hook("inject-memory-index.ps1", {"cwd": str(self.proj)})
+        self.assertEqual((rc, err), (0, ""))
         text = out["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("Memory directory: " + str(self.mem / "ws__proj").replace("\\", "/"), text)
-        self.assertIn("# Memory Index: proj", text)
+        self.assertIn("Created this folder's memory root", text)
+        self.assertIn("Memory directory: " + str(self.mem / "ws__새 폴더 a").replace("\\", "/"), text)
+        self.assertIn("# Memory Index: 새 폴더 a", text)
+        rc, out, err = self.hook("inject-memory-index.ps1", {"cwd": str(self.proj)})   # later sessions: same root, reconnected
+        self.assertIn("# Memory Index: 새 폴더 a", out["hookSpecificOutput"]["additionalContext"])
 
-    def test_folder_without_memory_gets_nothing(self):
-        self.assertEqual(self.hook("inject-memory-index.ps1", {"cwd": str(self.ws / "proj")}), {})
+    def test_folder_outside_the_workspace_gets_nothing(self):
+        outside = Path(self.tmp.name) / "elsewhere"
+        outside.mkdir()
+        self.assertEqual(self.hook("inject-memory-index.ps1", {"cwd": str(outside)}), (0, {}, ""))
 
-    def test_agy_first_call_only(self):
-        first = self.hook("agy-session-start.ps1", {"initialNumSteps": 1, "invocationNum": 0,
-                                                     "workspacePaths": [str(self.ws / "proj").replace("\\", "/")]})
-        text = first["injectSteps"][0]["userMessage"]
-        self.assertIn("Created this folder's memory root", text)   # ensure-memory-dir ran
-        self.assertIn("# Memory Index: proj", text)                  # and the index of that root came along
-        later = self.hook("agy-session-start.ps1", {"initialNumSteps": 3, "invocationNum": 2,
-                                                     "workspacePaths": [str(self.ws / "proj")]})
-        self.assertEqual(later, {})
+    def test_memory_turned_off_gets_no_index(self):
+        write(self.proj / ".claude/settings.json", json.dumps({"autoMemoryDirectory": str(self.mem / "x"), "autoMemoryEnabled": False}))
+        write(self.mem / "x/MEMORY.md", "# x\n")
+        self.assertEqual(self.hook("inject-memory-index.ps1", {"cwd": str(self.proj)}), (0, {}, ""))
+
+    def test_broken_setting_fails_loudly(self):
+        write(self.proj / ".claude/settings.local.json", "{ not json")
+        rc, out, err = self.hook("inject-memory-index.ps1", {"cwd": str(self.proj)})
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(out, {})
+        self.assertTrue(err.strip())
+
+    def test_tilde_memory_directory(self):
+        home = Path(self.tmp.name) / "home"
+        write(home / "mem/manual/MEMORY.md", "# manual index\n")
+        write(self.proj / ".claude/settings.local.json", json.dumps({"autoMemoryDirectory": "~/mem/manual"}))
+        self.env["USERPROFILE"] = str(home)
+        rc, out, err = self.hook("inject-memory-index.ps1", {"cwd": str(self.proj)})
+        self.assertEqual((rc, err), (0, ""))
+        self.assertIn("# manual index", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_agy_session_start(self):
+        """agy 1.5.16 SessionStart: input has cwd; output is injectSteps with a nested systemMessage"""
+        rc, out, err = self.hook("agy-session-start.ps1", {"hookEventName": "SessionStart", "cwd": str(self.proj).replace("\\", "/"),
+                                                            "workspacePaths": [str(self.proj).replace("\\", "/")]})
+        self.assertEqual((rc, err), (0, ""))
+        text = out["injectSteps"][0]["systemMessage"]["systemMessage"]
+        self.assertIn("Created this folder's memory root", text)
+        self.assertIn("# Memory Index: 새 폴더 a", text)
+        self.assertEqual(text.count("memory root"), 1)   # the root is created once, not by two hooks
+
+    def test_readme_agy_hooks_json_shape(self):
+        """agy SessionStart handlers are a flat list (no matcher wrapper), inside a named group"""
+        readme = (HOOK.parents[1] / "README.md").read_text(encoding="utf-8")
+        blocks = [json.loads(b) for b in re.findall(r"```json\n(.*?)```", readme, re.S)]
+        agy = [b for b in blocks if "agy-session-start" in json.dumps(b)]
+        self.assertEqual(len(agy), 1)
+        (group,) = agy[0].values()
+        self.assertEqual(list(group), ["SessionStart"])
+        self.assertIn("agy-session-start.ps1", group["SessionStart"][0]["command"])
+
+    def test_readme_codex_hooks_json_shape(self):
+        """Codex rejects hooks.json without the top-level "hooks" object (Codex 0.169: unknown field SessionStart)"""
+        readme = (HOOK.parents[1] / "README.md").read_text(encoding="utf-8")
+        blocks = [json.loads(b) for b in re.findall(r"```json\n(.*?)```", readme, re.S)]
+        codex = [b for b in blocks if "inject-memory-index" in json.dumps(b)]
+        self.assertEqual(len(codex), 1)
+        entries = codex[0]["hooks"]["SessionStart"]
+        self.assertEqual([h["command"].rsplit("\\", 1)[-1].strip('"') for e in entries for h in e["hooks"]], ["inject-memory-index.ps1"])
 
 
 if __name__ == "__main__":

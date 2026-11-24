@@ -8,16 +8,16 @@ AI 에이전트용 설치·사용 안내. 사람용 소개는 `README.md`.
 
 설정을 바꾸는 단계마다 무엇을 바꿀지 보여 주고 사용자에게 먼저 묻는다. 3~5번은 사용자가 쓰는 하네스만.
 
-1. 사용자에게 **workspace** 폴더(그 아래 폴더마다 메모리가 생김), 쓰는 하네스(Claude Code·Codex·agy), 서브에이전트 메모리를 쓰는지 확인한다(`memory: user` 인 Claude Code 서브에이전트 — 예: ohh000410/Subagents 플러그인 — 는 `~/.claude/agent-memory/` 에 씀). 이 저장소는 임시 폴더가 아니고 경로에 공백이 없는 고정된 곳에 받는다(agy 훅 명령은 따옴표를 못 씀).
+1. 사용자에게 **workspace** 폴더(그 아래 폴더마다 메모리가 생김), 쓰는 하네스(Claude Code·Codex·agy), 서브에이전트 메모리를 쓰는지 확인한다(`memory: user` 인 Claude Code 서브에이전트 — 예: ohh000410/Subagents 플러그인 — 는 `~/.claude/agent-memory/` 에 씀). 이 저장소는 임시 폴더가 아닌 고정된 곳에 받는다.
 2. `config.example.json` 을 `config.json` 으로 복사하고 `workspace` 를 적는다. `roots` 에는 정리할 그룹을 모두 적는다(`roots` 는 기본값과 합쳐지지 않음 — 서브에이전트 메모리를 안 쓰면 `agent` 를 지움).
 3. 스킬 연결(PowerShell 에서는 `cmd /c mklink /J <링크> <원본>`, 상위 폴더가 없으면 먼저 만듦). 그 자리에 `curate-memory` 스킬이 이미 있으면 멈추고 묻는다.
    - Claude Code: `%USERPROFILE%\.claude\skills\curate-memory` → `<저장소>\skills\curate-memory`
    - Codex: `%USERPROFILE%\.agents\skills\curate-memory` → 같은 곳
-   - agy: `%USERPROFILE%\.gemini\config\skills.json` 의 `entries` 에 `{"path": "<저장소>/skills"}`(슬래시, 드라이브 문자 절대경로)
+   - agy: `%USERPROFILE%\.gemini\config\skills.json` 에 `{"entries": [{"path": "<저장소>/skills"}]}`(없으면 새로 만듦, 있으면 `entries` 에 추가. 슬래시, 드라이브 문자 절대경로)
 4. 세션 시작 훅(설정 파일은 먼저 백업, 기존 키·훅은 모두 유지). 명령은 `powershell -NoProfile -ExecutionPolicy Bypass -File "<저장소>\hooks\<훅>.ps1"`.
    - Claude Code `%USERPROFILE%\.claude\settings.json`: `env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR = "1"`, `SessionStart` 에 `ensure-memory-dir.ps1`
-   - Codex `%USERPROFILE%\.codex\hooks.json`: `SessionStart` 에 `ensure-memory-dir.ps1`, 그다음 `inject-memory-index.ps1`(이 순서). 사용자가 Codex 에서 `/hooks` 로 승인해야 돈다
-   - agy `%USERPROFILE%\.gemini\config\hooks.json`: 이름 붙은 묶음(예: `"harness-memory"`) 의 `PreInvocation` 에 `agy-session-start.ps1`, timeout 30. 경로를 따옴표로 감싸지 않는다
+   - Codex `%USERPROFILE%\.codex\hooks.json`(`CODEX_HOME` 이 있으면 그 아래): 최상위 `hooks` 객체의 `SessionStart` 에 `inject-memory-index.ps1` 하나(메모리 만들기까지 그 안에서 함 — 둘로 나누면 함께 시작돼 첫 세션에 목록이 빠짐). 사용자가 Codex 에서 `/hooks` 로 승인해야 돈다
+   - agy(1.5.16) `%USERPROFILE%\.gemini\config\hooks.json`: 이름 붙은 묶음(예: `"harness-memory"`) 의 `SessionStart` 에 `agy-session-start.ps1`, timeout 30. `SessionStart` 항목은 matcher 없이 바로 나열
    - JSON 모양은 `README.md` 「설치」 3번
 5. `templates/memory-rules.md` 를 하네스 지침 파일 끝에 붙인다 — Claude Code `%USERPROFILE%\.claude\CLAUDE.md`, Codex `%USERPROFILE%\.codex\AGENTS.md`, agy `%USERPROFILE%\.gemini\GEMINI.md`. 글을 먼저 보여 준다.
 6. 실제 메모리를 건드리지 않고 확인: 저장소 폴더에서 `python -X utf8 -m unittest discover tests`, 그다음 `python -X utf8 skills/curate-memory/scripts/curate.py --dry-run`(메모리·LLM 안 건드림, 보고서만 씀) 후 보고서를 요약한다.

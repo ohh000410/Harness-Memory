@@ -6,6 +6,7 @@
 # and tells the session where to save. A folder that already has autoMemoryDirectory, or autoMemoryEnabled false, is left alone.
 # Set CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1 in Claude Code's env: otherwise a `cd` into a sub-folder followed by
 # /compact or /clear hands this hook the sub-folder as cwd and a stray root is created there.
+$ErrorActionPreference = 'Stop'   # a broken setting fails loudly instead of being skipped
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 $inputText = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), $utf8).ReadToEnd()
 $cwd = [string](ConvertFrom-Json $inputText).cwd
@@ -13,7 +14,7 @@ if (-not $cwd) { exit 0 }
 
 # Config: MEMORY_CURATION_CONFIG, else config.json in the repository root (one level above hooks/)
 $configPath = if ($env:MEMORY_CURATION_CONFIG) { $env:MEMORY_CURATION_CONFIG } else { Join-Path (Split-Path $PSScriptRoot -Parent) 'config.json' }
-$cfg = if (Test-Path -LiteralPath $configPath) { ConvertFrom-Json ([System.IO.File]::ReadAllText($configPath, $utf8)) } else { $null }
+$cfg = if (Test-Path -LiteralPath $configPath -PathType Leaf) { ConvertFrom-Json ([System.IO.File]::ReadAllText($configPath, $utf8)) } else { $null }
 function Expand([string]$p) { if ($p.StartsWith('~')) { Join-Path $env:USERPROFILE $p.Substring(1).TrimStart('/', '\') } else { $p } }
 $ws = if ($cfg -and $cfg.workspace) { Expand $cfg.workspace } else { exit 0 }      # no workspace configured: do nothing
 $ws = [System.IO.Path]::GetFullPath($ws).TrimEnd('\')
@@ -32,7 +33,7 @@ $settingsDir = Join-Path $cwd '.claude'
 $settingsPath = Join-Path $settingsDir 'settings.local.json'
 foreach ($name in 'settings.local.json', 'settings.json') {
     $f = Join-Path $settingsDir $name
-    if (-not (Test-Path -LiteralPath $f)) { continue }
+    if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { continue }
     $c = ConvertFrom-Json ([System.IO.File]::ReadAllText($f, $utf8))
     if ($c.autoMemoryDirectory -or $c.autoMemoryEnabled -eq $false) { exit 0 }
 }
@@ -47,7 +48,7 @@ $dir = Split-Path $cwd -Parent
 while ($dir.Length -ge $ws.Length -and -not $parentL0) {
     foreach ($name in 'settings.local.json', 'settings.json') {
         $f = Join-Path $dir ".claude\$name"
-        if (Test-Path -LiteralPath $f) {
+        if (Test-Path -LiteralPath $f -PathType Leaf) {
             $m = (ConvertFrom-Json ([System.IO.File]::ReadAllText($f, $utf8))).autoMemoryDirectory
             if ($m) { $parentL0 = "$m/MEMORY.md"; break }
         }
@@ -56,7 +57,7 @@ while ($dir.Length -ge $ws.Length -and -not $parentL0) {
 }
 
 # A root that already exists (its folder setting was lost, or the folder was restored) is only reconnected, never rewritten
-$existing = Test-Path -LiteralPath (Join-Path $memdir 'MEMORY.md')
+$existing = Test-Path -LiteralPath (Join-Path $memdir 'MEMORY.md') -PathType Leaf
 if (-not $existing) {
     $today = Get-Date -Format 'yyyy-MM-dd'
     $l0 = "# Memory Index: $($rel.Replace('\', '/'))`n`nLast curated: $today (created by ensure-memory-dir hook).`n`n"
@@ -67,7 +68,7 @@ if (-not $existing) {
 }
 
 New-Item -ItemType Directory -Force $settingsDir | Out-Null
-$s = if (Test-Path -LiteralPath $settingsPath) { ConvertFrom-Json ([System.IO.File]::ReadAllText($settingsPath, $utf8)) } else { [pscustomobject]@{} }
+$s = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) { ConvertFrom-Json ([System.IO.File]::ReadAllText($settingsPath, $utf8)) } else { [pscustomobject]@{} }
 $s | Add-Member -NotePropertyName autoMemoryDirectory -NotePropertyValue $memdir -Force
 [System.IO.File]::WriteAllText($settingsPath, (($s | ConvertTo-Json -Depth 10) + "`n"), $utf8)
 
