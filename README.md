@@ -2,9 +2,10 @@
 
 # Harness Memory
 
-**Claude Code·Codex·Antigravity 가 함께 쓰는 파일 메모리와 매일 밤 정리 스킬**
+**하네스 공용 LLM 메모리와 야간 정리**<br>
+Claude Code · Codex · Antigravity
 
-![하네스 Claude Code · Codex · Antigravity](https://img.shields.io/badge/%ED%95%98%EB%84%A4%EC%8A%A4-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Antigravity-D97757) ![플랫폼 Windows](https://img.shields.io/badge/%ED%94%8C%EB%9E%AB%ED%8F%BC-Windows-0078D6) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB) ![라이선스 MIT](https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-MIT-3DA639)
+![플랫폼 Windows](https://img.shields.io/badge/%ED%94%8C%EB%9E%AB%ED%8F%BC-Windows-0078D6) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB) ![라이선스 MIT](https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-MIT-3DA639)
 
 작업 폴더마다 메모리를 하나씩 두고, 어느 하네스로 열든 같은 메모리를 읽고 씁니다.<br>
 세션은 짧은 목록 파일만 읽고 시작하고,<br>
