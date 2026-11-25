@@ -18,7 +18,12 @@
 
 ## 이렇게 일합니다
 
-<p align="center"><img src="assets/how-it-works.png" alt="세션 시작(Claude Code·Codex·Antigravity) → 폴더 메모리(MEMORY.md → 주제 목차 → 메모) → 매일 밤 정리(curate.py)" width="100%"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/how-it-works-dark.png">
+    <img src="assets/how-it-works.png" alt="세션 시작(Claude Code·Codex·Antigravity) → 폴더 메모리(MEMORY.md → 주제 목차 → 메모) → 야간 정리(curate.py)" width="85%">
+  </picture>
+</p>
 
 세션 시작 때 들어가는 것은 약 800토큰 이하의 목록 파일 하나입니다. 나머지는 필요할 때 목차를 따라 엽니다. 정리는 **코드가 고치고, LLM 은 판단(JSON)만** 합니다 — 어느 목차에 넣을지, 무엇이 서로 모순되는지, 큰 목차를 어떻게 나눌지.
 
