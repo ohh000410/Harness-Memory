@@ -18,28 +18,7 @@
 
 ## 이렇게 일합니다
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {"lineColor": "#4F7DF3"}}}%%
-flowchart LR
-    S(["세션 시작"]) --> L0("MEMORY.md<br/>목록 파일만 읽음")
-    L0 -. 필요할 때 .-> I("주제 목차")
-    I -.-> N("메모<br/>사실은 여기에만")
-    W("세션이 저장") --> R("MEMORY.md<br/>Recent 칸")
-    R --> C{"매일 밤<br/>curate.py"}
-    C --> X("목차 배치·쪼개기<br/>오래된 진행 기록 보관<br/>모순·링크·형식 점검")
-    X --> L0
-    classDef start fill:#E8F1FF,stroke:#2F80ED,color:#0B2E59
-    classDef file fill:#D97757,stroke:#B85C3E,color:#FFFFFF,rx:14px,ry:14px
-    classDef note fill:#7C5CFF,stroke:#5B3FE0,color:#FFFFFF,rx:14px,ry:14px
-    classDef run fill:#FFC145,stroke:#D99A00,color:#3A2A00
-    classDef fix fill:#2DA44E,stroke:#1F7A38,color:#FFFFFF,rx:14px,ry:14px
-    class S,W start
-    class L0,R,I file
-    class N note
-    class C run
-    class X fix
-    linkStyle default stroke:#4F7DF3,stroke-width:2.5px
-```
+<p align="center"><img src="assets/how-it-works.png" alt="세션 시작(Claude Code·Codex·Antigravity) → 폴더 메모리(MEMORY.md → 주제 목차 → 메모) → 매일 밤 정리(curate.py)" width="100%"></p>
 
 세션 시작 때 들어가는 것은 약 800토큰 이하의 목록 파일 하나입니다. 나머지는 필요할 때 목차를 따라 엽니다. 정리는 **코드가 고치고, LLM 은 판단(JSON)만** 합니다 — 어느 목차에 넣을지, 무엇이 서로 모순되는지, 큰 목차를 어떻게 나눌지.
 
